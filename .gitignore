@@ -1,0 +1,18 @@
+# Root level
+node_modules/
+.env
+.DS_Store
+.vscode/
+.idea/
+
+# Backend
+/backend/node_modules/
+/backend/.env
+/backend/uploads/*
+/backend/test/
+/backend/test-user.js
+
+# Frontend
+/personal-finance/node_modules/
+/personal-finance/.env
+/personal-finance/build/

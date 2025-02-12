@@ -27,32 +27,34 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
   const { token } = useAuth();
   const [error, setError] = useState('');
   const [formData, setFormData] = useState({
-    type: 'expense',
-    category: '',
-    amount: '',
-    description: '',
-    date: new Date().toISOString().split('T')[0]
+    type: editingTransaction?.type || 'expense',
+    amount: editingTransaction?.amount || '',
+    category: editingTransaction?.category || '',
+    description: editingTransaction?.description || '',
+    date: editingTransaction?.date ? new Date(editingTransaction.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
   });
   const [attachments, setAttachments] = useState([]);
+  const [selectedFiles, setSelectedFiles] = useState([]);
 
   useEffect(() => {
     if (editingTransaction) {
       setFormData({
         type: editingTransaction.type,
-        category: editingTransaction.category,
         amount: editingTransaction.amount,
-        description: editingTransaction.description,
+        category: editingTransaction.category,
+        description: editingTransaction.description || '',
         date: new Date(editingTransaction.date).toISOString().split('T')[0]
       });
-      // Düzenlenen işlemin eklerini yükle
-      if (editingTransaction.attachments) {
+      if (editingTransaction.attachments && editingTransaction.attachments.length > 0) {
         setAttachments(editingTransaction.attachments);
+      } else {
+        setAttachments([]);
       }
     } else {
       setFormData({
         type: 'expense',
-        category: '',
         amount: '',
+        category: '',
         description: '',
         date: new Date().toISOString().split('T')[0]
       });
@@ -70,45 +72,6 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
     }));
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      const data = {
-        ...formData,
-        attachments: attachments.map(att => att._id)
-      };
-
-      let response;
-      if (editingTransaction) {
-        response = await axios.put(
-          `http://localhost:5000/api/transactions/${editingTransaction._id}`,
-          data,
-          {
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
-          }
-        );
-        onTransactionAdded(response.data, 'update');
-      } else {
-        response = await axios.post(
-          'http://localhost:5000/api/transactions',
-          data,
-          {
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
-          }
-        );
-        onTransactionAdded(response.data, 'add');
-      }
-      handleClose();
-    } catch (error) {
-      console.error('Transaction save error:', error);
-      setError(error.response?.data?.message || 'İşlem kaydedilirken bir hata oluştu');
-    }
-  };
-
   const handleFileChange = async (event) => {
     const files = Array.from(event.target.files);
     
@@ -123,7 +86,7 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
 
       try {
         const response = await axios.post(
-          'http://localhost:5000/api/documents/upload',
+          'http://localhost:5000/api/documents',
           formData,
           {
             headers: {
@@ -140,8 +103,49 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
         setError(error.response?.data?.message || 'Dosya yüklenirken bir hata oluştu');
       }
     }
-    // Input'u temizle
     event.target.value = '';
+  };
+
+  const resetForm = () => {
+    setFormData({
+      type: 'expense',
+      amount: '',
+      category: '',
+      description: '',
+      date: new Date().toISOString().split('T')[0]
+    });
+    setAttachments([]);
+    setSelectedFiles([]);
+    setError('');
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+
+    try {
+      const data = {
+        ...formData,
+        attachments: attachments.map(att => att._id)
+      };
+
+      const response = await axios({
+        method: editingTransaction ? 'put' : 'post',
+        url: `http://localhost:5000/api/transactions${editingTransaction ? `/${editingTransaction._id}` : ''}`,
+        data: data,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      onTransactionAdded(response.data, editingTransaction ? 'update' : 'add');
+      resetForm();
+      handleClose();
+    } catch (error) {
+      console.error('Save error:', error);
+      setError(error.response?.data?.message || 'İşlem kaydedilirken bir hata oluştu');
+    }
   };
 
   const handleRemoveAttachment = async (attachmentId) => {
@@ -154,6 +158,7 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
           }
         }
       );
+      setSelectedFiles(prev => prev.filter(att => att._id !== attachmentId));
       setAttachments(prev => prev.filter(att => att._id !== attachmentId));
     } catch (error) {
       console.error('Remove attachment error:', error);
@@ -175,8 +180,13 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
     ]
   };
 
+  const handleDialogClose = () => {
+    resetForm();
+    handleClose();
+  };
+
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+    <Dialog open={open} onClose={handleDialogClose} maxWidth="sm" fullWidth>
       <DialogTitle>
         {editingTransaction ? 'İşlemi Düzenle' : 'Yeni İşlem'}
       </DialogTitle>
@@ -196,8 +206,8 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
                 onChange={handleChange}
                 required
               >
-                <MenuItem value="income">Gelir</MenuItem>
                 <MenuItem value="expense">Gider</MenuItem>
+                <MenuItem value="income">Gelir</MenuItem>
               </Select>
             </FormControl>
 
@@ -218,8 +228,8 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
             </FormControl>
 
             <TextField
-              name="amount"
               label="Tutar"
+              name="amount"
               type="number"
               value={formData.amount}
               onChange={handleChange}
@@ -228,16 +238,15 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
             />
 
             <TextField
-              name="description"
               label="Açıklama"
+              name="description"
               value={formData.description}
               onChange={handleChange}
-              required
             />
 
             <TextField
-              name="date"
               label="Tarih"
+              name="date"
               type="date"
               value={formData.date}
               onChange={handleChange}
@@ -272,14 +281,27 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
               <List>
                 {attachments.map((attachment) => (
                   <ListItem key={attachment._id}>
-                    <ListItemText
-                      primary={attachment.title}
-                      secondary={
-                        <Typography variant="body2" color="text.secondary">
-                          {attachment.fileType}
-                        </Typography>
-                      }
-                    />
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="body1">
+                        {attachment.title}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {attachment.fileType}
+                      </Typography>
+                      {attachment.fileType.startsWith('image/') && (
+                        <Box sx={{ mt: 1 }}>
+                          <img 
+                            src={`http://localhost:5000/uploads/${attachment.path.split('\\').pop()}`} 
+                            alt={attachment.title}
+                            style={{ 
+                              maxWidth: '100%', 
+                              maxHeight: '100px',
+                              objectFit: 'contain'
+                            }}
+                          />
+                        </Box>
+                      )}
+                    </Box>
                     <ListItemSecondaryAction>
                       <IconButton
                         edge="end"
@@ -295,7 +317,7 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleClose}>İptal</Button>
+          <Button onClick={handleDialogClose}>İptal</Button>
           <Button type="submit" variant="contained">
             {editingTransaction ? 'Güncelle' : 'Ekle'}
           </Button>

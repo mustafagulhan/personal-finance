@@ -17,8 +17,22 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const navigate = useNavigate();
 
+  const isTokenExpired = (token) => {
+    try {
+      const decoded = JSON.parse(atob(token.split('.')[1]));
+      return decoded.exp * 1000 < Date.now();
+    } catch (error) {
+      return true;
+    }
+  };
+
   useEffect(() => {
     if (token) {
+      if (isTokenExpired(token)) {
+        logout();
+        return;
+      }
+
       localStorage.setItem('token', token);
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       try {
@@ -26,14 +40,30 @@ export const AuthProvider = ({ children }) => {
         setUser({ id: decoded.id, email: decoded.email });
       } catch (error) {
         console.error('Token decode error:', error);
+        logout();
       }
     } else {
       localStorage.removeItem('token');
       delete axios.defaults.headers.common['Authorization'];
       setUser(null);
-      navigate('/login');
     }
-  }, [token, navigate]);
+  }, [token]);
+
+  useEffect(() => {
+    const interceptor = axios.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error.response?.status === 401) {
+          logout();
+        }
+        return Promise.reject(error);
+      }
+    );
+
+    return () => {
+      axios.interceptors.response.eject(interceptor);
+    };
+  }, []);
 
   const login = async (loginData) => {
     try {

@@ -28,6 +28,15 @@ const Navbar = () => {
             <Button color="inherit" onClick={() => navigate('/transactions')}>
               İşlemler
             </Button>
+            <Button color="inherit" onClick={() => navigate('/vault')}>
+              Kasa
+            </Button>
+            <Button color="inherit" onClick={() => navigate('/personnel')}>
+              Personel
+            </Button>
+            <Button color="inherit" onClick={() => navigate('/monthly-income')}>
+              Aylık Gelir
+            </Button>
             <Button color="inherit" onClick={() => navigate('/reports')}>
               Raporlar
             </Button>

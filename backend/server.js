@@ -29,11 +29,13 @@ app.use('/api/transactions', require('./routes/transactions'));
 app.use('/api/documents', require('./routes/documents'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/dashboard', require('./routes/dashboard'));
+app.use('/api/estimations', require('./routes/estimations'));
+app.use('/api/vault', require('./routes/vault'));
+app.use('/api/personnel', require('./routes/personnel'));
+app.use('/api/monthly-income', require('./routes/monthlyIncome'));
 
 // Uploads klasörünü statik olarak sun
-const uploadsPath = path.join(process.cwd(), 'uploads');
-console.log('Uploads directory path:', uploadsPath);
-app.use('/uploads', express.static(uploadsPath));
+app.use('/uploads', express.static('uploads'));
 
 // Test route
 app.get('/', (req, res) => {

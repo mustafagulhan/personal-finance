@@ -8,7 +8,7 @@ const transactionSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['income', 'expense'],
+    enum: ['income', 'expense', 'vault-in', 'vault-out'],
     required: true
   },
   amount: {
@@ -21,11 +21,15 @@ const transactionSchema = new mongoose.Schema({
   },
   description: {
     type: String,
-    required: true
+    default: ''
   },
   date: {
     type: Date,
     required: true
+  },
+  isVaultTransaction: {
+    type: Boolean,
+    default: false
   },
   attachments: [{
     type: mongoose.Schema.Types.ObjectId,

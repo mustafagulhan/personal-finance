@@ -56,11 +56,11 @@ const login = async (credentials) => {
     // Token'ı düzgün formatta oluştur
     const token = jwt.sign(
       { 
-        id: user._id.toString(), // _id'yi stringe çevir
+        id: user._id.toString(),
         email: user.email 
       },
       process.env.JWT_SECRET,
-      { expiresIn: '24h' }
+      { expiresIn: '7d' }
     );
 
     console.log('Generated token payload:', { id: user._id.toString(), email: user.email }); // Debug için

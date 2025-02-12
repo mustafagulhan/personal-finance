@@ -15,7 +15,10 @@ function Login() {
     try {
       await login(formData);
     } catch (error) {
-      setError('Giriş yapılırken bir hata oluştu');
+      setError(
+        error.response?.data?.message || 
+        'Giriş yapılırken bir hata oluştu. Lütfen bilgilerinizi kontrol edip tekrar deneyin.'
+      );
     }
   };
 

@@ -14,6 +14,9 @@ import Dashboard from './pages/Dashboard';
 import Transactions from './pages/Transactions';
 import Reports from './pages/Reports';
 import Documents from './pages/Documents';
+import Personnel from './pages/Personnel';
+import MonthlyIncome from './pages/MonthlyIncome';
+import Vault from './pages/Vault';
 
 function App() {
   return (
@@ -30,6 +33,9 @@ function App() {
               <Route path="/transactions" element={<Transactions />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/documents" element={<Documents />} />
+              <Route path="/personnel" element={<Personnel />} />
+              <Route path="/monthly-income" element={<MonthlyIncome />} />
+              <Route path="/vault" element={<Vault />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </div>

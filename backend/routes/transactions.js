@@ -2,18 +2,15 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const Transaction = require('../models/Transaction');
+const Document = require('../models/Document');
+const upload = require('../middleware/upload');
 
 // Tüm işlemleri getir
 router.get('/', auth, async (req, res) => {
   try {
     const transactions = await Transaction.find({ userId: req.user.id })
-      .populate({
-        path: 'attachments',
-        select: '_id title filePath fileType fileSize'
-      })
+      .populate('attachments')
       .sort({ date: -1 });
-    
-    console.log('Transactions with attachments:', transactions); // Debug için
     res.json(transactions);
   } catch (error) {
     console.error('Get transactions error:', error);
@@ -21,34 +18,53 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
-// Yeni işlem ekle
+// Tekil işlem getir
+router.get('/:id', auth, async (req, res) => {
+  try {
+    const transaction = await Transaction.findOne({
+      _id: req.params.id,
+      userId: req.user.id
+    }).populate('attachments');
+    
+    if (!transaction) {
+      return res.status(404).json({ message: 'İşlem bulunamadı' });
+    }
+    
+    res.json(transaction);
+  } catch (error) {
+    console.error('Get transaction error:', error);
+    res.status(500).json({ message: 'İşlem alınırken bir hata oluştu' });
+  }
+});
+
+// İşlem oluştur
 router.post('/', auth, async (req, res) => {
   try {
-    const { type, amount, category, description, date, attachments } = req.body;
+    const { type, amount, category, description = '', date, attachments } = req.body;
 
-    const newTransaction = new Transaction({
+    const transaction = new Transaction({
       userId: req.user.id,
       type,
-      amount,
+      amount: parseFloat(amount),
       category,
       description,
-      date: date || new Date(),
+      date: new Date(date),
       attachments: attachments || []
     });
 
-    const savedTransaction = await newTransaction.save();
+    await transaction.save();
     
-    // İşlem detaylarını attachments ile birlikte getir
-    const populatedTransaction = await Transaction.findById(savedTransaction._id)
-      .populate({
-        path: 'attachments',
-        select: '_id title filePath fileType fileSize'
-      });
+    // Ekleri ile birlikte işlemi getir
+    const populatedTransaction = await Transaction.findById(transaction._id)
+      .populate('attachments');
 
     res.status(201).json(populatedTransaction);
   } catch (error) {
-    console.error('Create transaction error:', error);
-    res.status(500).json({ message: 'İşlem oluşturulurken bir hata oluştu' });
+    console.error('Transaction create error:', error);
+    res.status(500).json({ 
+      message: 'İşlem oluşturulurken bir hata oluştu',
+      error: error.message 
+    });
   }
 });
 
@@ -61,10 +77,7 @@ router.put('/:id', auth, async (req, res) => {
       { _id: req.params.id, userId: req.user.id },
       { type, amount, category, description, date, attachments },
       { new: true }
-    ).populate({
-      path: 'attachments',
-      select: '_id title filePath fileType fileSize'
-    });
+    ).populate('attachments');
 
     if (!transaction) {
       return res.status(404).json({ message: 'İşlem bulunamadı' });

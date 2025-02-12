@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const auth = require('../middleware/auth');
 const Document = require('../models/Document');
+const upload = require('../middleware/upload');
 
 // Multer yapılandırması
 const storage = multer.diskStorage({
@@ -35,7 +36,7 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-const upload = multer({
+const uploadMulter = multer({
   storage: storage,
   limits: {
     fileSize: 5 * 1024 * 1024 // 5MB limit
@@ -43,70 +44,28 @@ const upload = multer({
   fileFilter: fileFilter
 }).single('file');
 
-// Dosya yükleme endpoint'i
-router.post('/upload', auth, (req, res) => {
-  upload(req, res, async function(err) {
-    if (err) {
-      console.error('Multer error:', err);
-      if (err instanceof multer.MulterError) {
-        if (err.code === 'LIMIT_FILE_SIZE') {
-          return res.status(400).json({ message: 'Dosya boyutu 5MB\'dan büyük olamaz' });
-        }
-        return res.status(400).json({ message: 'Dosya yükleme hatası' });
-      }
-      return res.status(400).json({ message: err.message });
+// Tekli dosya yükleme
+router.post('/', auth, uploadMulter, async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'Dosya yüklenemedi' });
     }
 
-    try {
-      // Dosya kontrolü
-      if (!req.file) {
-        return res.status(400).json({ message: 'Dosya yüklenmedi' });
-      }
+    // Dosya bilgilerini MongoDB'ye kaydet
+    const document = new Document({
+      userId: req.user.id,
+      title: req.file.originalname,
+      path: req.file.path,
+      fileType: req.file.mimetype,
+      size: req.file.size
+    });
 
-      // Önceki aynı isimli dosyayı kontrol et ve sil
-      const existingDoc = await Document.findOne({
-        userId: req.user.id,
-        title: req.file.originalname
-      });
-
-      if (existingDoc) {
-        // Eski dosyayı fiziksel olarak sil
-        if (fs.existsSync(existingDoc.filePath)) {
-          fs.unlinkSync(existingDoc.filePath);
-        }
-        // Veritabanından sil
-        await existingDoc.deleteOne();
-      }
-
-      // Yeni belgeyi kaydet
-      const document = new Document({
-        userId: req.user.id,
-        title: req.file.originalname,
-        filePath: req.file.path,
-        fileType: req.file.mimetype,
-        fileSize: req.file.size
-      });
-
-      const savedDoc = await document.save();
-      console.log('Document saved:', savedDoc);
-
-      res.status(201).json({
-        _id: savedDoc._id,
-        title: savedDoc.title,
-        filePath: savedDoc.filePath,
-        fileType: savedDoc.fileType,
-        fileSize: savedDoc.fileSize,
-        createdAt: savedDoc.createdAt
-      });
-    } catch (error) {
-      console.error('Save document error:', error);
-      // Hata durumunda yüklenen dosyayı temizle
-      if (req.file && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-      }
-      res.status(500).json({ message: 'Dosya kaydedilemedi' });
-    }
-  });
+    await document.save();
+    res.status(201).json(document);
+  } catch (error) {
+    console.error('Document upload error:', error);
+    res.status(500).json({ message: 'Dosya kaydedilemedi', error: error.message });
+  }
 });
 
 // Tüm belgeleri getir
@@ -121,7 +80,7 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
-// Belge sil
+// Dosya silme
 router.delete('/:id', auth, async (req, res) => {
   try {
     const document = await Document.findOne({
@@ -130,23 +89,25 @@ router.delete('/:id', auth, async (req, res) => {
     });
 
     if (!document) {
-      return res.status(404).json({ message: 'Belge bulunamadı' });
+      return res.status(404).json({ message: 'Dosya bulunamadı' });
     }
 
-    // Dosyayı fiziksel olarak sil
-    if (fs.existsSync(document.filePath)) {
-      fs.unlinkSync(document.filePath);
+    // Fiziksel dosyayı sil
+    if (fs.existsSync(document.path)) {
+      fs.unlinkSync(document.path);
     }
 
+    // Veritabanından sil
     await document.deleteOne();
-    res.json({ message: 'Belge başarıyla silindi' });
+
+    res.json({ message: 'Dosya başarıyla silindi' });
   } catch (error) {
-    console.error('Delete document error:', error);
-    res.status(500).json({ message: 'Belge silinirken bir hata oluştu' });
+    console.error('Document delete error:', error);
+    res.status(500).json({ message: 'Dosya silinemedi' });
   }
 });
 
-// Belge indir
+// Dosya indirme endpoint'i
 router.get('/:id/download', auth, async (req, res) => {
   try {
     const document = await Document.findOne({
@@ -155,17 +116,28 @@ router.get('/:id/download', auth, async (req, res) => {
     });
 
     if (!document) {
-      return res.status(404).json({ message: 'Belge bulunamadı' });
+      return res.status(404).json({ message: 'Dosya bulunamadı' });
     }
 
-    res.download(document.filePath, document.originalName);
+    // Dosyanın var olduğunu kontrol et
+    if (!fs.existsSync(document.path)) {
+      return res.status(404).json({ message: 'Dosya sistemde bulunamadı' });
+    }
+
+    // Content-Type header'ını ayarla
+    res.setHeader('Content-Type', document.fileType);
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(document.title)}"`);
+
+    // Dosyayı stream olarak gönder
+    const fileStream = fs.createReadStream(document.path);
+    fileStream.pipe(res);
   } catch (error) {
-    console.error('Belge indirilemedi:', error);
-    res.status(500).json({ message: 'Sunucu hatası' });
+    console.error('Download document error:', error);
+    res.status(500).json({ message: 'Dosya indirilirken bir hata oluştu' });
   }
 });
 
-// Belge görüntüle
+// Dosya görüntüleme endpoint'i
 router.get('/:id/view', auth, async (req, res) => {
   try {
     const document = await Document.findOne({
@@ -174,42 +146,18 @@ router.get('/:id/view', auth, async (req, res) => {
     });
 
     if (!document) {
-      return res.status(404).json({ message: 'Belge bulunamadı' });
-    }
-
-    // Dosya yolunu düzelt ve kontrol et
-    const filePath = path.resolve(document.filePath);
-    if (!fs.existsSync(filePath)) {
       return res.status(404).json({ message: 'Dosya bulunamadı' });
     }
 
-    // Dosyayı oku
-    const fileData = fs.readFileSync(filePath);
-    
-    // Base64'e çevir
-    const base64Data = fileData.toString('base64');
-
-    // Dosya türüne göre Content-Type belirle
-    const contentType = {
-      'application/pdf': 'application/pdf',
-      'image/jpeg': 'image/jpeg',
-      'image/png': 'image/png'
-    }[document.fileType];
-
-    if (!contentType) {
-      return res.status(400).json({ message: 'Desteklenmeyen dosya türü' });
-    }
-
-    // Base64 ve dosya bilgilerini gönder
+    // Dosya yolunu düzelt
     res.json({
-      data: `data:${contentType};base64,${base64Data}`,
       title: document.title,
-      type: document.fileType
+      fileType: document.fileType,
+      path: document.path
     });
-
   } catch (error) {
     console.error('View document error:', error);
-    res.status(500).json({ message: 'Belge görüntülenirken bir hata oluştu' });
+    res.status(500).json({ message: 'Dosya görüntülenirken bir hata oluştu' });
   }
 });
 

@@ -42,7 +42,7 @@ npm start
 
 ## Ortam Değişkenleri
 
-Backend için `.env` dosyası oluşturulur:
+Backend için `.env` dosyası oluşturun:
 
 ```env
 MONGODB_URI=your_mongodb_uri

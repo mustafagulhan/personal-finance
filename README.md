@@ -4,10 +4,10 @@ Gelir ve giderlerinizi takip edebileceğiniz, raporlar oluşturabileceğiniz ve 
 
 ## Özellikler
 
-- ��� Gelir/Gider takibi
-- ��� Detaylı raporlar ve grafikler
-- ��� Belge yönetimi
-- ��� Karanlık/Aydınlık tema
+-  Gelir/Gider takibi
+-  Detaylı raporlar ve grafikler
+- Belge yönetimi
+- Karanlık/Aydınlık tema
 - ��� Responsive tasarım
 
 ## Teknolojiler

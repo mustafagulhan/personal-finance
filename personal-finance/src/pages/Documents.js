@@ -23,6 +23,7 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
+import PageTitle from '../components/PageTitle';
 
 function Documents() {
   const { token } = useAuth();
@@ -188,27 +189,20 @@ function Documents() {
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="h4" className="page-title">
-          Belgeler
-        </Typography>
-        <input
-          type="file"
-          accept=".pdf,.jpg,.jpeg,.png"
-          multiple
-          onChange={handleFileUpload}
-          style={{ display: 'none' }}
-          id="document-upload"
-        />
-        <label htmlFor="document-upload">
-          <Button
-            variant="contained"
-            component="span"
-            startIcon={<UploadIcon />}
-          >
-            Yeni Belge
-          </Button>
-        </label>
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'flex-start',
+        mb: 4
+      }}>
+        <PageTitle title="Belgeler" />
+        <Button
+          variant="contained"
+          startIcon={<UploadIcon />}
+          onClick={handleFileUpload}
+        >
+          Belge Ekle
+        </Button>
       </Box>
 
       {error && (

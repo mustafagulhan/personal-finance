@@ -37,6 +37,7 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
+import PageTitle from '../components/PageTitle';
 
 function Vault() {
   const { token } = useAuth();
@@ -50,6 +51,7 @@ function Vault() {
   });
   const [transactions, setTransactions] = useState([]);
   const [netBalance, setNetBalance] = useState(0);
+  const [successMessage, setSuccessMessage] = useState(null);
   const theme = useTheme();
 
   const fetchVaultBalance = async () => {
@@ -67,11 +69,11 @@ function Vault() {
 
   const fetchTransactions = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/transactions', {
+      // Kasa işlemleri için özel endpoint'i kullan
+      const response = await axios.get('http://localhost:5000/api/vault/transactions', {
         headers: { Authorization: `Bearer ${token}` }
       });
-      const vaultTransactions = response.data.filter(t => t.isVaultTransaction);
-      setTransactions(vaultTransactions);
+      setTransactions(response.data);
     } catch (error) {
       console.error('Transactions fetch error:', error);
       setError('İşlemler alınamadı');
@@ -80,8 +82,10 @@ function Vault() {
 
   useEffect(() => {
     if (token) {
-      fetchVaultBalance();
-      fetchTransactions();
+      Promise.all([
+        fetchVaultBalance(),
+        fetchTransactions()
+      ]);
     }
   }, [token]);
 
@@ -110,8 +114,7 @@ function Vault() {
     }
   }, [token, transactions]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleTransfer = async (formData) => {
     try {
       const response = await axios.post(
         'http://localhost:5000/api/vault/transfer',
@@ -120,35 +123,46 @@ function Vault() {
           headers: { Authorization: `Bearer ${token}` }
         }
       );
-      
+
       // Kasa bakiyesini güncelle
       setVault(response.data.vault);
-      
-      // İşlemi transactions listesine ekle
-      setTransactions(prevTransactions => [response.data.transaction, ...prevTransactions]);
-      
-      // Net bakiyeyi güncelle
-      setNetBalance(response.data.netBalance);
-      
-      // Formu kapat ve temizle
+
+      // İşlemleri yeniden yükle
+      fetchTransactions();
+      fetchVaultBalance();
+
+      // Modal'ı kapat
       setOpenForm(false);
-      setFormData({
-        type: 'vault-in',
-        amount: '',
-        description: ''
-      });
-      
+
+      // Başarı mesajı göster
+      setSuccessMessage(
+        formData.type === 'vault-in' 
+          ? 'Para başarıyla kasaya eklendi' 
+          : 'Para başarıyla kasadan çekildi'
+      );
     } catch (error) {
       console.error('Transfer error:', error);
-      setError(error.response?.data?.message || 'İşlem başarısız');
+      setError(error.response?.data?.message || 'İşlem sırasında bir hata oluştu');
     }
   };
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Typography variant="h4" className="page-title">
-        Kasa Yönetimi
-      </Typography>
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'flex-start',
+        mb: 4
+      }}>
+        <PageTitle title="Kasa Yönetimi" />
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => setOpenForm(true)}
+        >
+          İşlem Ekle
+        </Button>
+      </Box>
 
       <Grid container spacing={3}>
         {/* Özet Kartları */}
@@ -200,20 +214,6 @@ function Vault() {
                   <Typography variant="body2" sx={{ opacity: 0.8 }}>
                     Kasadaki mevcut para
                   </Typography>
-                  <Button
-                    variant="contained"
-                    startIcon={<AddIcon />}
-                    onClick={() => setOpenForm(true)}
-                    sx={{ 
-                      mt: 2,
-                      bgcolor: 'rgba(255, 255, 255, 0.2)',
-                      '&:hover': {
-                        bgcolor: 'rgba(255, 255, 255, 0.3)'
-                      }
-                    }}
-                  >
-                    Yeni İşlem
-                  </Button>
                   <Typography variant="body2" sx={{ mt: 2, opacity: 0.8 }}>
                     Mevcut Net Bakiye: ₺{netBalance.toFixed(2)}
                   </Typography>
@@ -358,8 +358,17 @@ function Vault() {
         </Alert>
       )}
 
+      {successMessage && (
+        <Alert severity="success" sx={{ mt: 2 }}>
+          {successMessage}
+        </Alert>
+      )}
+
       <Dialog open={openForm} onClose={() => setOpenForm(false)}>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={(e) => {
+          e.preventDefault();
+          handleTransfer(formData);
+        }}>
           <DialogTitle>
             Kasa İşlemi
           </DialogTitle>

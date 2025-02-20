@@ -1,27 +1,26 @@
-const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
 require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
 const path = require('path');
+const connectDB = require('./config/db');
+const { seedDefaultCategories } = require('./models/Category');
 
 const app = express();
 
 // Middleware
 app.use(cors({
   origin: 'http://localhost:3000',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   exposedHeaders: ['Content-Disposition', 'Content-Type']
 }));
 app.use(express.json());
 
 // MongoDB Bağlantısı
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-.then(() => console.log('MongoDB bağlantısı başarılı'))
-.catch(err => console.error('MongoDB bağlantı hatası:', err));
+connectDB().then(() => {
+  // Bağlantı başarılı olduktan sonra varsayılan kategorileri oluştur
+  seedDefaultCategories();
+});
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
@@ -33,6 +32,8 @@ app.use('/api/estimations', require('./routes/estimations'));
 app.use('/api/vault', require('./routes/vault'));
 app.use('/api/personnel', require('./routes/personnel'));
 app.use('/api/monthly-income', require('./routes/monthlyIncome'));
+app.use('/api/notes', require('./routes/notes'));
+app.use('/api/debts', require('./routes/debts'));
 
 // Uploads klasörünü statik olarak sun
 app.use('/uploads', express.static('uploads'));

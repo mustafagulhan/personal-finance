@@ -28,6 +28,7 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
+import PageTitle from '../components/PageTitle';
 
 function Personnel() {
   const { token } = useAuth();
@@ -134,11 +135,13 @@ function Personnel() {
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Typography variant="h4" className="page-title">
-        Personel Yönetimi
-      </Typography>
-
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 3 }}>
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'flex-start',
+        mb: 4
+      }}>
+        <PageTitle title="Personel Yönetimi" />
         <Button
           variant="contained"
           startIcon={<AddIcon />}
@@ -155,7 +158,7 @@ function Personnel() {
             setOpenForm(true);
           }}
         >
-          Yeni Personel
+          Personel Ekle
         </Button>
       </Box>
 
@@ -181,7 +184,14 @@ function Personnel() {
           </TableHead>
           <TableBody>
             {personnel.map((person) => (
-              <TableRow key={person._id}>
+              <TableRow 
+                key={person._id}
+                sx={{
+                  '&:hover': {
+                    backgroundColor: 'action.hover'
+                  }
+                }}
+              >
                 <TableCell>
                   <Box
                     sx={{
@@ -202,10 +212,18 @@ function Personnel() {
                 <TableCell align="right">₺{calculateTotalCost(person).toFixed(2)}</TableCell>
                 <TableCell>{new Date(person.startDate).toLocaleDateString('tr-TR')}</TableCell>
                 <TableCell align="right">
-                  <IconButton onClick={() => handleEdit(person)}>
+                  <IconButton 
+                    onClick={() => handleEdit(person)}
+                    size="small"
+                    sx={{ mr: 1 }}
+                  >
                     <EditIcon />
                   </IconButton>
-                  <IconButton onClick={() => handleDelete(person._id)}>
+                  <IconButton 
+                    onClick={() => handleDelete(person._id)}
+                    size="small"
+                    color="error"
+                  >
                     <DeleteIcon />
                   </IconButton>
                 </TableCell>

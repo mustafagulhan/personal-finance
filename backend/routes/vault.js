@@ -13,6 +13,7 @@ router.get('/', auth, async (req, res) => {
     }
     res.json(vault);
   } catch (error) {
+    console.error('Vault fetch error:', error);
     res.status(500).json({ message: 'Kasa bilgisi alınamadı' });
   }
 });
@@ -22,7 +23,7 @@ router.post('/transfer', auth, async (req, res) => {
   try {
     const { amount, type, description } = req.body;
     const numericAmount = parseFloat(amount);
-    
+
     let vault = await Vault.findOne({ userId: req.user.id });
     if (!vault) {
       vault = await Vault.create({ userId: req.user.id });
@@ -40,10 +41,10 @@ router.post('/transfer', auth, async (req, res) => {
     
     await vault.save();
 
-    // Kasa işlemini kaydet
-    const transaction = new Transaction({
+    // Kasa işlemi için transaction oluştur
+    const vaultTransaction = new Transaction({
       userId: req.user.id,
-      type: type === 'vault-in' ? 'expense' : 'income', // Kasaya para eklemek gider, çekmek gelir
+      type: type, // vault-in veya vault-out
       amount: numericAmount,
       category: 'Kasa',
       description: description || (type === 'vault-in' ? 'Kasaya para eklendi' : 'Kasadan para çekildi'),
@@ -51,20 +52,32 @@ router.post('/transfer', auth, async (req, res) => {
       isVaultTransaction: true
     });
 
-    await transaction.save();
+    await vaultTransaction.save();
 
-    // Net bakiyeyi hesapla
-    const transactions = await Transaction.find({ userId: req.user.id });
-    const netBalance = transactions.reduce((acc, curr) => {
-      if (curr.type === 'income') return acc + curr.amount;
-      if (curr.type === 'expense') return acc - curr.amount;
-      return acc;
-    }, 0);
+    // Ana bakiye için işlem kaydı
+    const mainTransaction = new Transaction({
+      userId: req.user.id,
+      type: type === 'vault-in' ? 'expense' : 'income', // Ana bakiye için tersine çevir
+      amount: numericAmount,
+      category: 'Kasa',
+      description: description || (type === 'vault-in' ? 'Kasaya para eklendi' : 'Kasadan para çekildi'),
+      date: new Date(),
+      isVaultTransaction: false
+    });
 
-    res.json({ 
+    await mainTransaction.save();
+
+    // Tüm kasa işlemlerini getir
+    const vaultTransactions = await Transaction.find({
+      userId: req.user.id,
+      isVaultTransaction: true
+    }).sort({ date: -1 });
+
+    res.json({
       vault,
-      transaction,
-      netBalance
+      vaultTransaction,
+      mainTransaction,
+      vaultTransactions // Tüm kasa işlemlerini de dön
     });
   } catch (error) {
     console.error('Vault transfer error:', error);
@@ -118,6 +131,24 @@ router.post('/deposit', auth, async (req, res) => {
   } catch (error) {
     console.error('Vault deposit error:', error);
     res.status(500).json({ message: 'Para eklenirken bir hata oluştu' });
+  }
+});
+
+// Kasa işlemlerini getir
+router.get('/transactions', auth, async (req, res) => {
+  try {
+    const transactions = await Transaction.find({
+      userId: req.user.id,
+      $or: [
+        { type: 'vault-in' },
+        { type: 'vault-out' }
+      ]
+    }).sort({ date: -1 });
+
+    res.json(transactions);
+  } catch (error) {
+    console.error('Vault transactions fetch error:', error);
+    res.status(500).json({ message: 'Kasa işlemleri alınamadı' });
   }
 });
 

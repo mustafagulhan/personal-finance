@@ -25,6 +25,7 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
+import PageTitle from '../components/PageTitle';
 
 function MonthlyIncome() {
   const { token } = useAuth();
@@ -120,18 +121,13 @@ function MonthlyIncome() {
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Typography variant="h4" className="page-title">
-        Aylık Gelir Takibi
-      </Typography>
-
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <TextField
-          type="month"
-          value={selectedMonth}
-          onChange={(e) => setSelectedMonth(e.target.value)}
-          label="Ay Seçin"
-          InputLabelProps={{ shrink: true }}
-        />
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'flex-start',
+        mb: 4
+      }}>
+        <PageTitle title="Aylık Gelir Takibi" />
         <Button
           variant="contained"
           startIcon={<AddIcon />}
@@ -146,7 +142,7 @@ function MonthlyIncome() {
             setOpenForm(true);
           }}
         >
-          Yeni Gelir
+          Gelir Ekle
         </Button>
       </Box>
 

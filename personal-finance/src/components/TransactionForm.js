@@ -15,11 +15,14 @@ import {
   IconButton,
   List,
   ListItem,
-  ListItemText,
   ListItemSecondaryAction,
-  Typography
+  Typography,
+  InputAdornment,
+  TableRow,
+  TableCell,
+  Chip
 } from '@mui/material';
-import { AttachFile as AttachFileIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import { AttachFile as AttachFileIcon, Delete as DeleteIcon, Close as CloseIcon } from '@mui/icons-material';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -31,45 +34,90 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
     amount: editingTransaction?.amount || '',
     category: editingTransaction?.category || '',
     description: editingTransaction?.description || '',
-    date: editingTransaction?.date ? new Date(editingTransaction.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+    date: editingTransaction?.date ? new Date(editingTransaction.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+    attachments: editingTransaction?.attachments || [],
   });
-  const [attachments, setAttachments] = useState([]);
   const [selectedFiles, setSelectedFiles] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [showCustomCategory, setShowCustomCategory] = useState(false);
+  const [customCategory, setCustomCategory] = useState('');
 
   useEffect(() => {
     if (editingTransaction) {
       setFormData({
         type: editingTransaction.type,
-        amount: editingTransaction.amount,
+        amount: editingTransaction.amount.toString(),
         category: editingTransaction.category,
         description: editingTransaction.description || '',
-        date: new Date(editingTransaction.date).toISOString().split('T')[0]
+        date: new Date(editingTransaction.date).toISOString().split('T')[0],
+        attachments: editingTransaction.attachments || []
       });
-      if (editingTransaction.attachments && editingTransaction.attachments.length > 0) {
-        setAttachments(editingTransaction.attachments);
-      } else {
-        setAttachments([]);
-      }
     } else {
       setFormData({
         type: 'expense',
         amount: '',
         category: '',
         description: '',
-        date: new Date().toISOString().split('T')[0]
+        date: new Date().toISOString().split('T')[0],
+        attachments: [],
       });
-      setAttachments([]);
     }
   }, [editingTransaction]);
 
+  useEffect(() => {
+    if (formData.type) {
+      const fetchCategories = async () => {
+        try {
+          const response = await axios.get(
+            `http://localhost:5000/api/transactions/categories/${formData.type}`,
+            { 
+              headers: { 
+                Authorization: `Bearer ${token}` 
+              } 
+            }
+          );
+          setCategories(response.data);
+          setError(null);
+        } catch (error) {
+          console.error('Categories fetch error:', error);
+          setError('Kategoriler yüklenirken bir hata oluştu');
+        }
+      };
+
+      fetchCategories();
+    }
+  }, [formData.type, token]);
+
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value,
-      // Tür değiştiğinde kategoriyi sıfırla
-      ...(name === 'type' ? { category: '' } : {})
-    }));
+    
+    if (name === 'type') {
+      setFormData(prev => ({
+        ...prev,
+        type: value,
+        category: ''
+      }));
+    } else if (name === 'amount') {
+      const numericValue = value.replace(/[^0-9.]/g, '');
+      setFormData(prev => ({
+        ...prev,
+        [name]: numericValue
+      }));
+    } else if (name === 'category') {
+      setFormData(prev => ({
+        ...prev,
+        category: value
+      }));
+      setShowCustomCategory(value === 'Diğer');
+      if (value !== 'Diğer') {
+        setCustomCategory('');
+      }
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    }
   };
 
   const handleFileChange = async (event) => {
@@ -96,7 +144,10 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
           }
         );
 
-        setAttachments(prev => [...prev, response.data]);
+        setFormData(prev => ({
+          ...prev,
+          attachments: [...prev.attachments, response.data]
+        }));
         setError(null);
       } catch (error) {
         console.error('File upload error:', error);
@@ -108,42 +159,65 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
 
   const resetForm = () => {
     setFormData({
-      type: 'expense',
+      type: '',
       amount: '',
       category: '',
       description: '',
-      date: new Date().toISOString().split('T')[0]
+      date: new Date().toISOString().split('T')[0],
+      attachments: []
     });
-    setAttachments([]);
     setSelectedFiles([]);
-    setError('');
+    setCustomCategory('');
+    setShowCustomCategory(false);
+    setError(null);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
-
+    
     try {
-      const data = {
-        ...formData,
-        attachments: attachments.map(att => att._id)
+      const dataToSend = {
+        type: formData.type,
+        amount: parseFloat(formData.amount),
+        category: formData.category,
+        description: formData.description || '',
+        date: formData.date
       };
 
-      const response = await axios({
-        method: editingTransaction ? 'put' : 'post',
-        url: `http://localhost:5000/api/transactions${editingTransaction ? `/${editingTransaction._id}` : ''}`,
-        data: data,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      let response;
+      if (editingTransaction) {
+        // Düzenleme işlemi
+        response = await axios.put(
+          `http://localhost:5000/api/transactions/${editingTransaction._id}`,
+          dataToSend,
+          {
+            headers: { 
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+      } else {
+        // Yeni işlem ekleme
+        response = await axios.post(
+          'http://localhost:5000/api/transactions',
+          dataToSend,
+          {
+            headers: { 
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+      }
 
-      onTransactionAdded(response.data, editingTransaction ? 'update' : 'add');
-      resetForm();
-      handleClose();
+      if (response.data) {
+        onTransactionAdded(response.data);
+        handleClose();
+        resetForm();
+      }
     } catch (error) {
-      console.error('Save error:', error);
+      console.error('Transaction save error:', error);
       setError(error.response?.data?.message || 'İşlem kaydedilirken bir hata oluştu');
     }
   };
@@ -159,82 +233,116 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
         }
       );
       setSelectedFiles(prev => prev.filter(att => att._id !== attachmentId));
-      setAttachments(prev => prev.filter(att => att._id !== attachmentId));
+      setFormData(prev => ({
+        ...prev,
+        attachments: prev.attachments.filter(att => att._id !== attachmentId)
+      }));
     } catch (error) {
       console.error('Remove attachment error:', error);
       setError('Dosya silinirken bir hata oluştu');
     }
   };
 
-  const categories = {
-    income: [
-      { value: 'Maaş', label: 'Maaş' },
-      { value: 'Ek Gelir', label: 'Ek Gelir' },
-      { value: 'Yatırım', label: 'Yatırım' }
-    ],
-    expense: [
-      { value: 'Alışveriş', label: 'Alışveriş' },
-      { value: 'Fatura', label: 'Fatura' },
-      { value: 'Kira', label: 'Kira' },
-      { value: 'Diğer', label: 'Diğer' }
-    ]
-  };
-
-  const handleDialogClose = () => {
-    resetForm();
-    handleClose();
+  const renderTransactionRow = (transaction) => {
+    const isIncome = transaction.type === 'income';
+    const amount = parseFloat(transaction.amount);
+    
+    return (
+      <TableRow key={transaction._id}>
+        <TableCell>{new Date(transaction.date).toLocaleDateString()}</TableCell>
+        <TableCell>{transaction.description}</TableCell>
+        <TableCell>{transaction.category}</TableCell>
+        <TableCell>
+          <Chip
+            label={isIncome ? "Gelir" : "Gider"}
+            size="small"
+            sx={{
+              backgroundColor: isIncome ? '#10B98115' : '#EF444415',
+              color: isIncome ? '#10B981' : '#EF4444',
+              fontWeight: 500,
+            }}
+          />
+        </TableCell>
+        <TableCell align="right" sx={{ color: isIncome ? '#10B981' : '#EF4444', fontWeight: 500 }}>
+          {isIncome ? '+' : '-'}₺{amount.toFixed(2)}
+        </TableCell>
+      </TableRow>
+    );
   };
 
   return (
-    <Dialog open={open} onClose={handleDialogClose} maxWidth="sm" fullWidth>
-      <DialogTitle>
+    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+      <DialogTitle sx={{ m: 0, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         {editingTransaction ? 'İşlemi Düzenle' : 'Yeni İşlem'}
+        <IconButton
+          aria-label="close"
+          onClick={handleClose}
+          sx={{
+            color: (theme) => theme.palette.grey[500],
+          }}
+        >
+          <CloseIcon />
+        </IconButton>
       </DialogTitle>
       <form onSubmit={handleSubmit}>
-        <DialogContent>
+        <DialogContent dividers>
           {error && (
             <Alert severity="error" sx={{ mb: 2 }}>
               {error}
             </Alert>
           )}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
-            <FormControl fullWidth>
+            <FormControl fullWidth required>
               <InputLabel>İşlem Türü</InputLabel>
               <Select
                 name="type"
                 value={formData.type}
                 onChange={handleChange}
-                required
               >
-                <MenuItem value="expense">Gider</MenuItem>
                 <MenuItem value="income">Gelir</MenuItem>
+                <MenuItem value="expense">Gider</MenuItem>
               </Select>
             </FormControl>
 
-            <FormControl fullWidth>
+            <FormControl fullWidth required>
               <InputLabel>Kategori</InputLabel>
               <Select
                 name="category"
                 value={formData.category}
                 onChange={handleChange}
-                required
+                disabled={!formData.type}
               >
-                {categories[formData.type].map(cat => (
-                  <MenuItem key={cat.value} value={cat.value}>
-                    {cat.label}
+                {categories.map((category) => (
+                  <MenuItem key={category} value={category}>
+                    {category}
                   </MenuItem>
                 ))}
               </Select>
             </FormControl>
 
+            {showCustomCategory && (
+              <TextField
+                fullWidth
+                label="Yeni Kategori"
+                value={customCategory}
+                onChange={(e) => setCustomCategory(e.target.value)}
+                required
+                margin="dense"
+              />
+            )}
+
             <TextField
-              label="Tutar"
               name="amount"
-              type="number"
+              label="Tutar"
+              type="text"
               value={formData.amount}
               onChange={handleChange}
+              fullWidth
               required
-              inputProps={{ min: 0, step: "0.01" }}
+              margin="dense"
+              InputProps={{
+                startAdornment: <InputAdornment position="start">₺</InputAdornment>,
+              }}
             />
 
             <TextField
@@ -245,13 +353,17 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
             />
 
             <TextField
-              label="Tarih"
               name="date"
+              label="Tarih"
               type="date"
               value={formData.date}
               onChange={handleChange}
-              InputLabelProps={{ shrink: true }}
+              fullWidth
               required
+              margin="dense"
+              InputLabelProps={{
+                shrink: true,
+              }}
             />
 
             {/* Dosya Ekleme Bölümü */}
@@ -277,9 +389,9 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
             </Box>
 
             {/* Eklenen Dosyalar Listesi */}
-            {attachments.length > 0 && (
+            {formData.attachments.length > 0 && (
               <List>
-                {attachments.map((attachment) => (
+                {formData.attachments.map((attachment) => (
                   <ListItem key={attachment._id}>
                     <Box sx={{ flex: 1 }}>
                       <Typography variant="body1">
@@ -317,7 +429,7 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleDialogClose}>İptal</Button>
+          <Button onClick={handleClose}>İptal</Button>
           <Button type="submit" variant="contained">
             {editingTransaction ? 'Güncelle' : 'Ekle'}
           </Button>

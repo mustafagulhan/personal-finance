@@ -13,12 +13,12 @@ import {
   Box,
   IconButton,
   Collapse,
-  Chip,
   Stack,
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
+  CircularProgress,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -33,6 +33,7 @@ import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import TransactionForm from '../components/TransactionForm';
 import { useTheme } from '@mui/material/styles';
+import PageTitle from '../components/PageTitle';
 
 function Transactions() {
   const { token } = useAuth();
@@ -46,17 +47,38 @@ function Transactions() {
   const [viewingImage, setViewingImage] = useState(null);
   const theme = useTheme();
 
+  // Sıralama fonksiyonunu ayrı bir yardımcı fonksiyon olarak tanımlayalım
+  const sortTransactions = (transactions) => {
+    return [...transactions].sort((a, b) => {
+      // Önce tarihleri karşılaştır
+      const dateA = new Date(a.date);
+      const dateB = new Date(b.date);
+      
+      if (dateA.getTime() !== dateB.getTime()) {
+        return dateB.getTime() - dateA.getTime();
+      }
+      
+      // Tarihler aynıysa, createdAt'e göre sırala
+      const createdAtA = new Date(a.createdAt);
+      const createdAtB = new Date(b.createdAt);
+      return createdAtB.getTime() - createdAtA.getTime();
+    });
+  };
+
   const fetchTransactions = async () => {
+    setLoading(true);
     try {
       const response = await axios.get('http://localhost:5000/api/transactions', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
       });
-      setTransactions(response.data);
+
+      const sortedTransactions = sortTransactions(response.data);
+      setTransactions(sortedTransactions);
       setError(null);
     } catch (error) {
-      console.error('Transactions fetch error:', error);
+      console.error('Error fetching transactions:', error);
       setError('İşlemler yüklenirken bir hata oluştu');
     } finally {
       setLoading(false);
@@ -69,14 +91,33 @@ function Transactions() {
     }
   }, [token]);
 
-  const handleTransactionAdded = (transaction, operation) => {
-    if (operation === 'add') {
-      setTransactions([transaction, ...transactions]);
-    } else if (operation === 'update') {
-      setTransactions(transactions.map(t => 
-        t._id === transaction._id ? transaction : t
-      ));
+  const handleTransactionAdded = async (updatedTransaction) => {
+    try {
+      if (editingTransaction) {
+        // Düzenleme işlemi
+        setTransactions(prevTransactions => {
+          const updatedTransactions = prevTransactions.map(transaction => 
+            transaction._id === updatedTransaction._id ? updatedTransaction : transaction
+          );
+          return sortTransactions(updatedTransactions);
+        });
+      } else {
+        // Yeni işlem ekleme
+        setTransactions(prevTransactions => {
+          const newTransactions = [updatedTransaction, ...prevTransactions];
+          return sortTransactions(newTransactions);
+        });
+      }
+      handleCloseForm();
+    } catch (error) {
+      console.error('Transaction update error:', error);
+      setError('İşlem güncellenirken bir hata oluştu');
     }
+  };
+
+  const handleCloseForm = () => {
+    setOpenForm(false);
+    setEditingTransaction(null);
   };
 
   const handleEdit = async (transaction) => {
@@ -90,17 +131,22 @@ function Transactions() {
           }
         }
       );
-      setEditingTransaction(response.data);
-      setOpenForm(true);
+
+      if (response.data) {
+        setEditingTransaction(response.data);
+        setOpenForm(true);
+        setError(null); // Hata varsa temizle
+      }
     } catch (error) {
       console.error('Get transaction error:', error);
-      setError('İşlem detayları alınırken bir hata oluştu');
+      // Daha detaylı hata mesajı
+      const errorMessage = error.response?.data?.message || 'İşlem detayları alınırken bir hata oluştu';
+      setError(errorMessage);
+      
+      // Hata durumunda form açılmasın
+      setEditingTransaction(null);
+      setOpenForm(false);
     }
-  };
-
-  const handleCloseForm = () => {
-    setOpenForm(false);
-    setEditingTransaction(null);
   };
 
   const handleDelete = async (id) => {
@@ -172,43 +218,26 @@ function Transactions() {
     }
   };
 
-  const columns = [
-    {
-      field: 'date',
-      headerName: 'Tarih',
-      width: 120,
-      valueFormatter: (params) => new Date(params.value).toLocaleDateString('tr-TR')
-    },
-    {
-      field: 'type',
-      headerName: 'Tür',
-      width: 120,
-      valueFormatter: (params) => params.value === 'income' ? 'Gelir' : 'Gider'
-    },
-    {
-      field: 'amount',
-      headerName: 'Tutar',
-      width: 130,
-      valueFormatter: (params) => `₺${params.value.toFixed(2)}`
-    },
-    {
-      field: 'category',
-      headerName: 'Kategori',
-      width: 150
-    },
-    {
-      field: 'description',
-      headerName: 'Açıklama',
-      width: 200
-    }
-  ];
+  // Loading durumunu göster
+  if (loading) {
+    return (
+      <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+          <CircularProgress />
+        </Box>
+      </Container>
+    );
+  }
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="h4" className="page-title">
-          İşlemler
-        </Typography>
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'flex-start',
+        mb: 4
+      }}>
+        <PageTitle title="İşlemler" />
         <Button
           variant="contained"
           startIcon={<AddIcon />}

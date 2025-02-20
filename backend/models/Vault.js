@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const vaultSchema = new mongoose.Schema({
-  userId: {
+  userId: {  // Şimdilik userId olarak bırakalım
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
@@ -14,6 +14,4 @@ const vaultSchema = new mongoose.Schema({
   timestamps: true
 });
 
-const Vault = mongoose.model('Vault', vaultSchema);
-
-module.exports = Vault; 
+module.exports = mongoose.model('Vault', vaultSchema); 

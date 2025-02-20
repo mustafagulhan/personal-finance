@@ -2,82 +2,100 @@ import { createTheme } from '@mui/material/styles';
 
 const theme = createTheme({
   palette: {
-    mode: 'light',
+    mode: 'dark',
     primary: {
-      main: '#991b1b', // Daha koyu kırmızı
-      light: '#dc2626',
-      dark: '#7f1d1d',
-      contrastText: '#fff',
+      main: '#FF5F6D',
+      light: '#FF8E9A',
+      dark: '#E54854',
+      contrastText: '#FFFFFF',
     },
     secondary: {
-      main: '#334155', // Koyu gri
-      light: '#475569',
-      dark: '#1e293b',
-      contrastText: '#fff',
+      main: '#2A2A2A',
+      light: '#757575',
+      dark: '#1A1A1A',
+      contrastText: '#FFFFFF',
     },
     background: {
-      default: '#1e293b', // Koyu gri arka plan
-      paper: '#334155', // Grimsi siyah kart arka planı
+      default: '#121212',
+      paper: '#1E1E1E',
+      subtle: '#2D2D2D',
     },
     text: {
-      primary: '#f1f5f9', // Açık gri yazı
-      secondary: '#cbd5e1', // Daha açık gri yazı
+      primary: '#FFFFFF',
+      secondary: '#A0A0A0',
     },
+    divider: '#2D2D2D',
     success: {
-      main: '#22c55e',
-      light: '#4ade80',
-      dark: '#16a34a',
+      main: '#10B981',
+      light: '#34D399',
+      dark: '#059669',
+      contrastText: '#FFFFFF',
     },
     error: {
-      main: '#dc2626',
-      light: '#ef4444',
-      dark: '#b91c1c',
+      main: '#EF4444',
+      light: '#F87171',
+      dark: '#DC2626',
+      contrastText: '#FFFFFF',
     },
-    divider: 'rgba(255, 255, 255, 0.12)', // Daha belirgin ayraçlar
   },
   typography: {
-    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+    fontFamily: [
+      'Inter',
+      '-apple-system',
+      'BlinkMacSystemFont',
+      'Segoe UI',
+      'Roboto',
+      'sans-serif',
+    ].join(','),
     h1: {
+      fontSize: '2rem',
       fontWeight: 600,
-      color: '#f1f5f9',
     },
     h2: {
+      fontSize: '1.5rem',
       fontWeight: 600,
-      color: '#f1f5f9',
     },
     h3: {
+      fontSize: '1.25rem',
       fontWeight: 600,
-      color: '#f1f5f9',
     },
     h4: {
+      fontSize: '1.125rem',
       fontWeight: 600,
-      color: '#f1f5f9',
-    },
-    h5: {
-      fontWeight: 600,
-      color: '#f1f5f9',
-    },
-    h6: {
-      fontWeight: 600,
-      color: '#f1f5f9',
     },
     body1: {
-      color: '#f1f5f9',
+      fontSize: '0.875rem',
     },
-    body2: {
-      color: '#cbd5e1',
+    button: {
+      textTransform: 'none',
+      fontWeight: 500,
+      fontSize: '0.875rem',
     },
   },
   shape: {
     borderRadius: 8,
   },
   components: {
+    MuiAppBar: {
+      styleOverrides: {
+        root: {
+          backgroundColor: '#1E1E1E',
+          borderBottom: '1px solid #2D2D2D',
+        },
+      },
+    },
     MuiButton: {
       styleOverrides: {
         root: {
-          textTransform: 'none',
-          fontWeight: 500,
           borderRadius: 8,
+          padding: '8px 16px',
+          fontSize: '0.875rem',
+        },
+        contained: {
+          boxShadow: 'none',
+          '&:hover': {
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+          },
         },
       },
     },
@@ -85,36 +103,42 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           borderRadius: 12,
-          backgroundColor: '#334155', // Grimsi siyah kartlar
-          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+          border: '1px solid #2D2D2D',
+          boxShadow: 'none',
         },
       },
     },
-    MuiPaper: {
+    MuiDrawer: {
       styleOverrides: {
-        root: {
-          borderRadius: 12,
-          backgroundColor: '#334155', // Grimsi siyah paper
+        paper: {
+          backgroundColor: '#1E1E1E',
+          borderRight: '1px solid #2D2D2D',
+          width: 280,
         },
       },
     },
-    MuiAppBar: {
+    MuiListItemButton: {
       styleOverrides: {
         root: {
-          backgroundColor: '#1e293b', // Koyu gri navbar
-          boxShadow: '0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)',
+          borderRadius: 8,
+          margin: '4px 8px',
+          '&.Mui-selected': {
+            backgroundColor: '#2D2D2D',
+            '&:hover': {
+              backgroundColor: '#363636',
+            },
+          },
         },
       },
     },
-    MuiTableCell: {
+    MuiTableHead: {
       styleOverrides: {
         root: {
-          borderBottom: '1px solid rgba(255, 255, 255, 0.12)',
-          color: '#f1f5f9',
-        },
-        head: {
-          color: '#cbd5e1',
-          fontWeight: 600,
+          backgroundColor: '#2D2D2D',
+          '& .MuiTableCell-root': {
+            color: '#FFFFFF',
+            fontWeight: 600,
+          },
         },
       },
     },
@@ -122,49 +146,7 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           '&:hover': {
-            backgroundColor: 'rgba(255, 255, 255, 0.04)',
-          },
-        },
-      },
-    },
-    MuiIconButton: {
-      styleOverrides: {
-        root: {
-          color: '#cbd5e1',
-          '&:hover': {
-            backgroundColor: 'rgba(255, 255, 255, 0.08)',
-          },
-        },
-      },
-    },
-    MuiInputBase: {
-      styleOverrides: {
-        root: {
-          color: '#f1f5f9',
-        },
-      },
-    },
-    MuiOutlinedInput: {
-      styleOverrides: {
-        root: {
-          '& .MuiOutlinedInput-notchedOutline': {
-            borderColor: 'rgba(255, 255, 255, 0.23)',
-          },
-          '&:hover .MuiOutlinedInput-notchedOutline': {
-            borderColor: 'rgba(255, 255, 255, 0.4)',
-          },
-          '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-            borderColor: '#991b1b',
-          },
-        },
-      },
-    },
-    MuiInputLabel: {
-      styleOverrides: {
-        root: {
-          color: '#cbd5e1',
-          '&.Mui-focused': {
-            color: '#991b1b',
+            backgroundColor: '#2D2D2D',
           },
         },
       },

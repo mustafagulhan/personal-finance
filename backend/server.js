@@ -4,6 +4,7 @@ const cors = require('cors');
 const path = require('path');
 const connectDB = require('./config/db');
 const { seedDefaultCategories } = require('./models/Category');
+const fs = require('fs');
 
 const app = express();
 
@@ -22,6 +23,12 @@ connectDB().then(() => {
   seedDefaultCategories();
 });
 
+// Temp klasörünü oluştur
+const tempDir = path.join(__dirname, 'temp');
+if (!fs.existsSync(tempDir)) {
+  fs.mkdirSync(tempDir, { recursive: true });
+}
+
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/transactions', require('./routes/transactions'));
@@ -36,7 +43,7 @@ app.use('/api/notes', require('./routes/notes'));
 app.use('/api/debts', require('./routes/debts'));
 
 // Uploads klasörünü statik olarak sun
-app.use('/uploads', express.static('uploads'));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Test route
 app.get('/', (req, res) => {

@@ -2,10 +2,10 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-// uploads klasörünü oluştur
+// Upload klasörünü oluştur
 const uploadDir = 'uploads';
 if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir);
+  fs.mkdirSync(uploadDir, { recursive: true });
 }
 
 const storage = multer.diskStorage({
@@ -19,11 +19,13 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
-  const allowedTypes = ['image/jpeg', 'image/png', 'application/pdf'];
+  // İzin verilen dosya tipleri
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
+  
   if (allowedTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Geçersiz dosya türü. Sadece JPEG, PNG ve PDF dosyaları yüklenebilir.'), false);
+    cb(new Error('Desteklenmeyen dosya formatı. Sadece JPEG, PNG ve PDF dosyaları yüklenebilir.'), false);
   }
 };
 
@@ -31,7 +33,7 @@ const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB
+    fileSize: 5 * 1024 * 1024 // 5MB limit
   }
 });
 

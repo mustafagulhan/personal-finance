@@ -60,73 +60,100 @@ router.get('/categories/:type', auth, async (req, res) => {
   try {
     const { type } = req.params;
     
-    // Varsayılan kategorileri tanımla
-    const defaultCategories = {
-      income: ['Maaş', 'Ek Gelir', 'Prim', 'Kasa', 'Diğer'],
-      expense: ['Kira', 'Fatura', 'Market', 'Yakıt', 'Eğitim', 'Sağlık', 'Kasa', 'Diğer']
-    };
+    // Sadece Category modelinden kategorileri al
+    const categories = await Category.find({ type }).sort('name');
+    const categoryNames = categories.map(cat => cat.name);
 
-    // İşlem türü kontrolü
-    if (!defaultCategories[type]) {
-      return res.status(400).json({ message: 'Geçersiz işlem türü' });
+    // Diğer kategorisini sona ekle
+    const sortedCategories = categoryNames.filter(name => name !== 'Diğer');
+    if (categoryNames.includes('Diğer')) {
+      sortedCategories.push('Diğer');
     }
-
-    // Kullanıcının özel kategorilerini bul
-    const userCategories = await Transaction.distinct('category', {
-      userId: req.user.id,
-      type: type
-    });
-
-    // Tüm kategorileri birleştir ve tekrarları kaldır
-    const allCategories = Array.from(new Set([
-      ...defaultCategories[type],
-      ...userCategories
-    ]));
-
-    // Kategorileri alfabetik sırala
-    const sortedCategories = allCategories.sort((a, b) => {
-      if (a === 'Diğer') return 1;
-      if (b === 'Diğer') return -1;
-      return a.localeCompare(b, 'tr');
-    });
 
     res.json(sortedCategories);
   } catch (error) {
     console.error('Categories fetch error:', error);
-    res.status(500).json({ message: 'Kategoriler alınırken bir hata oluştu' });
+    res.status(500).json({ message: 'Kategoriler alınamadı' });
   }
 });
 
 // İşlem oluştur
-router.post('/', auth, async (req, res) => {
+router.post('/', auth, (req, res, next) => {
+  upload.array('files')(req, res, (err) => {
+    if (err) {
+      console.error('Upload error:', err);
+      return res.status(400).json({ 
+        message: err.message || 'Dosya yükleme hatası'
+      });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
-    const { type, amount, category, description, date } = req.body;
+    const { type, amount, category, customCategory, description, date } = req.body;
+    
+    // Dosyaları kaydet
+    const attachments = [];
+    if (req.files && req.files.length > 0) {
+      console.log('Gelen dosyalar:', req.files);
 
-    // Tutarı sayıya çevir
-    const numericAmount = parseFloat(amount);
-    if (isNaN(numericAmount)) {
-      return res.status(400).json({ message: 'Geçersiz tutar' });
+      for (const file of req.files) {
+        try {
+          const document = new Document({
+            userId: req.user.id,
+            title: file.originalname,
+            path: file.filename,
+            fileType: file.mimetype,
+            fileSize: file.size,
+            description: `${type === 'income' ? 'Gelir' : 'Gider'} işlemi belgesi: ${description}`
+          });
+          const savedDoc = await document.save();
+          attachments.push(savedDoc._id);
+        } catch (err) {
+          console.error('Belge kaydetme hatası:', err);
+        }
+      }
     }
 
-    // Yeni işlem oluştur
+    // Kategori kontrolü
+    let finalCategory = category;
+    if (category === 'Diğer' && customCategory) {
+      finalCategory = customCategory;
+      try {
+        // Yeni kategoriyi kaydet
+        await Category.create({
+          name: customCategory,
+          type,
+          isCustom: true
+        });
+      } catch (err) {
+        // Eğer kategori zaten varsa hata verme
+        if (err.code !== 11000) { // duplicate key error değilse tekrar fırlat
+          throw err;
+        }
+      }
+    }
+
     const transaction = new Transaction({
       userId: req.user.id,
       type,
-      amount: numericAmount, // Sayı olarak kaydet
-      category,
+      amount: parseFloat(amount),
+      category: finalCategory,
       description,
       date: date || new Date(),
-      isVaultTransaction: false
+      attachments
     });
 
     await transaction.save();
+    
+    // Belgeleri de içeren transaction'ı döndür
+    const populatedTransaction = await Transaction.findById(transaction._id)
+      .populate({
+        path: 'attachments',
+        select: 'title path fileType fileSize description'
+      });
 
-    // Yeni kategoriyi kaydet
-    if (category) {
-      await Transaction.addNewCategory(type, category);
-    }
-
-    res.status(201).json(transaction);
+    res.status(201).json(populatedTransaction);
   } catch (error) {
     console.error('Transaction create error:', error);
     res.status(500).json({ 
@@ -137,39 +164,50 @@ router.post('/', auth, async (req, res) => {
 });
 
 // İşlem güncelle
-router.put('/:id', auth, async (req, res) => {
+router.put('/:id', auth, upload.array('files'), async (req, res) => {
   try {
-    const { type, amount, category, description, date } = req.body;
+    const { type, amount, category, customCategory, description, date, existingAttachments } = req.body;
 
-    // Tutarı sayıya çevir
-    const numericAmount = parseFloat(amount);
-    if (isNaN(numericAmount)) {
-      return res.status(400).json({ message: 'Geçersiz tutar' });
+    // Yeni yüklenen dosyaları kaydet
+    const attachments = existingAttachments ? 
+      (Array.isArray(existingAttachments) ? existingAttachments : [existingAttachments]) : 
+      [];
+
+    if (req.files && req.files.length > 0) {
+      for (const file of req.files) {
+        try {
+          const document = new Document({
+            userId: req.user.id,
+            title: file.originalname,
+            path: file.filename,
+            fileType: file.mimetype,
+            fileSize: file.size,
+            description: `${type === 'income' ? 'Gelir' : 'Gider'} işlemi belgesi: ${description}`
+          });
+          const savedDoc = await document.save();
+          attachments.push(savedDoc._id);
+        } catch (err) {
+          console.error('Belge kaydetme hatası:', err);
+        }
+      }
     }
 
-    // İşlemi bul ve güncelle
+    // İşlemi güncelle
     const transaction = await Transaction.findOneAndUpdate(
       { _id: req.params.id, userId: req.user.id },
       {
         type,
-        amount: numericAmount,
-        category,
+        amount: parseFloat(amount),
+        category: category === 'Diğer' && customCategory ? customCategory : category,
         description,
-        date: date || new Date()
+        date: date || new Date(),
+        attachments
       },
-      { 
-        new: true, // Güncellenmiş veriyi dön
-        runValidators: true // Validasyonları çalıştır
-      }
-    ).populate('attachments'); // Ekleri de getir
+      { new: true }
+    ).populate('attachments');
 
     if (!transaction) {
       return res.status(404).json({ message: 'İşlem bulunamadı' });
-    }
-
-    // Yeni kategoriyi kaydet
-    if (category) {
-      await Transaction.addNewCategory(type, category);
     }
 
     res.json(transaction);

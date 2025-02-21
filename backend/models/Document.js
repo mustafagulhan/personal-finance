@@ -18,14 +18,13 @@ const documentSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  size: {
+  fileSize: {
     type: Number,
     required: true
-  }
+  },
+  description: String
 }, {
   timestamps: true
 });
 
-const Document = mongoose.model('Document', documentSchema);
-
-module.exports = Document; 
+module.exports = mongoose.model('Document', documentSchema); 

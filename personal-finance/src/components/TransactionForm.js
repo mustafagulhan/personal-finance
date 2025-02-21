@@ -20,7 +20,8 @@ import {
   InputAdornment,
   TableRow,
   TableCell,
-  Chip
+  Chip,
+  ListItemText
 } from '@mui/material';
 import { AttachFile as AttachFileIcon, Delete as DeleteIcon, Close as CloseIcon } from '@mui/icons-material';
 import axios from 'axios';
@@ -41,6 +42,7 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
   const [categories, setCategories] = useState([]);
   const [showCustomCategory, setShowCustomCategory] = useState(false);
   const [customCategory, setCustomCategory] = useState('');
+  const [attachments, setAttachments] = useState([]);
 
   useEffect(() => {
     if (editingTransaction) {
@@ -50,17 +52,10 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
         category: editingTransaction.category,
         description: editingTransaction.description || '',
         date: new Date(editingTransaction.date).toISOString().split('T')[0],
-        attachments: editingTransaction.attachments || []
       });
+      setAttachments(editingTransaction.attachments || []);
     } else {
-      setFormData({
-        type: 'expense',
-        amount: '',
-        category: '',
-        description: '',
-        date: new Date().toISOString().split('T')[0],
-        attachments: [],
-      });
+      resetForm();
     }
   }, [editingTransaction]);
 
@@ -120,41 +115,23 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
     }
   };
 
-  const handleFileChange = async (event) => {
+  const handleFileChange = (event) => {
     const files = Array.from(event.target.files);
     
+    // Dosya boyutu kontrolü
     for (const file of files) {
       if (file.size > 5 * 1024 * 1024) {
         setError('Dosya boyutu 5MB\'dan küçük olmalıdır');
         return;
       }
-
-      const formData = new FormData();
-      formData.append('file', file);
-
-      try {
-        const response = await axios.post(
-          'http://localhost:5000/api/documents',
-          formData,
-          {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'multipart/form-data'
-            }
-          }
-        );
-
-        setFormData(prev => ({
-          ...prev,
-          attachments: [...prev.attachments, response.data]
-        }));
-        setError(null);
-      } catch (error) {
-        console.error('File upload error:', error);
-        setError(error.response?.data?.message || 'Dosya yüklenirken bir hata oluştu');
-      }
     }
-    event.target.value = '';
+    
+    setSelectedFiles(prev => [...prev, ...files]);
+    event.target.value = ''; // Input'u temizle
+  };
+
+  const handleRemoveFile = (index) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   const resetForm = () => {
@@ -163,10 +140,10 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
       amount: '',
       category: '',
       description: '',
-      date: new Date().toISOString().split('T')[0],
-      attachments: []
+      date: new Date().toISOString().split('T')[0]
     });
     setSelectedFiles([]);
+    setAttachments([]);
     setCustomCategory('');
     setShowCustomCategory(false);
     setError(null);
@@ -176,38 +153,45 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
     e.preventDefault();
     
     try {
-      const dataToSend = {
-        type: formData.type,
-        amount: parseFloat(formData.amount),
-        category: formData.category,
-        description: formData.description || '',
-        date: formData.date
+      const formDataToSend = new FormData();
+      formDataToSend.append('type', formData.type);
+      formDataToSend.append('amount', parseFloat(formData.amount));
+      formDataToSend.append('category', formData.category);
+      if (formData.category === 'Diğer' && customCategory) {
+        formDataToSend.append('customCategory', customCategory);
+      }
+      formDataToSend.append('description', formData.description || '');
+      formDataToSend.append('date', formData.date);
+      
+      // Mevcut belgelerin ID'lerini ekle
+      attachments.forEach(attachment => {
+        formDataToSend.append('existingAttachments[]', attachment._id);
+      });
+
+      // Yeni dosyaları ekle
+      selectedFiles.forEach(file => {
+        formDataToSend.append('files', file);
+      });
+
+      const config = {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data'
+        }
       };
 
       let response;
       if (editingTransaction) {
-        // Düzenleme işlemi
         response = await axios.put(
           `http://localhost:5000/api/transactions/${editingTransaction._id}`,
-          dataToSend,
-          {
-            headers: { 
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
-          }
+          formDataToSend,
+          config
         );
       } else {
-        // Yeni işlem ekleme
         response = await axios.post(
           'http://localhost:5000/api/transactions',
-          dataToSend,
-          {
-            headers: { 
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
-          }
+          formDataToSend,
+          config
         );
       }
 
@@ -226,20 +210,13 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
     try {
       await axios.delete(
         `http://localhost:5000/api/documents/${attachmentId}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
       setSelectedFiles(prev => prev.filter(att => att._id !== attachmentId));
-      setFormData(prev => ({
-        ...prev,
-        attachments: prev.attachments.filter(att => att._id !== attachmentId)
-      }));
+      setAttachments(prev => prev.filter(att => att._id !== attachmentId));
     } catch (error) {
       console.error('Remove attachment error:', error);
-      setError('Dosya silinirken bir hata oluştu');
+      setError('Belge silinirken bir hata oluştu');
     }
   };
 
@@ -269,6 +246,61 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
       </TableRow>
     );
   };
+
+  const FileList = () => (
+    <List>
+      {selectedFiles.map((file, index) => (
+        <ListItem key={`new-${index}`}>
+          <ListItemText 
+            primary={file.name}
+            secondary={`${(file.size / 1024).toFixed(2)} KB`}
+          />
+          <ListItemSecondaryAction>
+            <IconButton
+              edge="end"
+              onClick={() => handleRemoveFile(index)}
+            >
+              <DeleteIcon />
+            </IconButton>
+          </ListItemSecondaryAction>
+        </ListItem>
+      ))}
+      
+      {attachments.map((attachment) => (
+        <ListItem key={attachment._id}>
+          <Box sx={{ flex: 1 }}>
+            <Typography variant="body1">
+              {attachment.title}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {attachment.fileType}
+            </Typography>
+            {attachment.fileType.startsWith('image/') && (
+              <Box sx={{ mt: 1 }}>
+                <img 
+                  src={`http://localhost:5000/uploads/${attachment.path}`}
+                  alt={attachment.title}
+                  style={{ 
+                    maxWidth: '100%', 
+                    maxHeight: '100px',
+                    objectFit: 'contain'
+                  }}
+                />
+              </Box>
+            )}
+          </Box>
+          <ListItemSecondaryAction>
+            <IconButton
+              edge="end"
+              onClick={() => handleRemoveAttachment(attachment._id)}
+            >
+              <DeleteIcon />
+            </IconButton>
+          </ListItemSecondaryAction>
+        </ListItem>
+      ))}
+    </List>
+  );
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
@@ -368,64 +400,25 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
 
             {/* Dosya Ekleme Bölümü */}
             <Box sx={{ mt: 2 }}>
-              <input
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png"
-                multiple
-                onChange={handleFileChange}
-                style={{ display: 'none' }}
-                id="attachment-input"
-              />
-              <label htmlFor="attachment-input">
-                <Button
-                  variant="outlined"
-                  component="span"
-                  startIcon={<AttachFileIcon />}
-                  fullWidth
-                >
-                  Belge Ekle
-                </Button>
-              </label>
+              <Button
+                variant="outlined"
+                component="label"
+                startIcon={<AttachFileIcon />}
+                fullWidth
+              >
+                Belge Ekle
+                <input
+                  type="file"
+                  hidden
+                  multiple
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={handleFileChange}
+                />
+              </Button>
             </Box>
 
-            {/* Eklenen Dosyalar Listesi */}
-            {formData.attachments.length > 0 && (
-              <List>
-                {formData.attachments.map((attachment) => (
-                  <ListItem key={attachment._id}>
-                    <Box sx={{ flex: 1 }}>
-                      <Typography variant="body1">
-                        {attachment.title}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {attachment.fileType}
-                      </Typography>
-                      {attachment.fileType.startsWith('image/') && (
-                        <Box sx={{ mt: 1 }}>
-                          <img 
-                            src={`http://localhost:5000/uploads/${attachment.path.split('\\').pop()}`} 
-                            alt={attachment.title}
-                            style={{ 
-                              maxWidth: '100%', 
-                              maxHeight: '100px',
-                              objectFit: 'contain'
-                            }}
-                          />
-                        </Box>
-                      )}
-                    </Box>
-                    <ListItemSecondaryAction>
-                      <IconButton
-                        edge="end"
-                        onClick={() => handleRemoveAttachment(attachment._id)}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </ListItemSecondaryAction>
-                  </ListItem>
-                ))}
-              </List>
-            )}
+            {/* Dosya Listesi */}
+            {(selectedFiles.length > 0 || attachments.length > 0) && <FileList />}
           </Box>
         </DialogContent>
         <DialogActions>

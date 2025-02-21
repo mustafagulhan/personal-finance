@@ -187,31 +187,39 @@ function Transactions() {
     }
   };
 
-  const handleDownloadAttachment = async (attachment) => {
+  const handleDownload = async (documentId) => {
     try {
       const response = await axios({
-        url: `http://localhost:5000/api/documents/${attachment._id}/download`,
+        url: `http://localhost:5000/api/documents/download/${documentId}`,
         method: 'GET',
         responseType: 'blob',
-        headers: {
-          'Authorization': `Bearer ${token}`
+        headers: { 
+          Authorization: `Bearer ${token}` 
         }
       });
 
-      // Blob URL oluştur
-      const blob = new Blob([response.data], { type: attachment.fileType });
+      // Content-Type ve dosya adını al
+      const contentType = response.headers['content-type'];
+      const filename = response.headers['content-disposition']
+        ?.split('filename=')[1]
+        ?.replace(/"/g, '') || 'document';
+
+      // Blob oluştur
+      const blob = new Blob([response.data], { type: contentType });
       const url = window.URL.createObjectURL(blob);
 
       // İndirme işlemini başlat
       const link = document.createElement('a');
       link.href = url;
-      link.download = attachment.title;
+      link.download = decodeURIComponent(filename);
       document.body.appendChild(link);
       link.click();
 
       // Temizlik
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      setTimeout(() => {
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      }, 100);
     } catch (error) {
       console.error('Download error:', error);
       setError('Dosya indirilirken bir hata oluştu');
@@ -341,7 +349,7 @@ function Transactions() {
                                 </IconButton>
                                 <IconButton
                                   size="small"
-                                  onClick={() => handleDownloadAttachment(attachment)}
+                                  onClick={() => handleDownload(attachment._id)}
                                   title="İndir"
                                 >
                                   <DownloadIcon />

@@ -28,15 +28,29 @@ const seedDefaultCategories = async () => {
   const defaultCategories = {
     expense: [
       'Kira',
-      'Fatura', 
+      'Fatura',
       'Market',
       'Yakıt',
       'Sağlık',
+      'Personel',
+      'Sigorta',
+      'Bakım',
+      'Yemek',
+      'Ulaşım',
+      'Kırtasiye',
+      'Reklam',
+      'Vergi',
+      'Kasa',
       'Diğer'
     ],
     income: [
       'Maaş',
+      'Satış',
+      'Komisyon',
+      'Kira Geliri',
+      'Faiz',
       'Ek Gelir',
+      'Kasa',
       'Diğer'
     ]
   };

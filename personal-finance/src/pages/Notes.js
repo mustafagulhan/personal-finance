@@ -15,7 +15,8 @@ import {
   Tabs,
   Tab,
   CircularProgress,
-  Button
+  Button,
+  Snackbar
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -59,6 +60,11 @@ function Notes() {
   const [activeTab, setActiveTab] = useState('active');
   const [archivedNotes, setArchivedNotes] = useState([]);
   const navigate = useNavigate();
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success'
+  });
 
   const fetchNotes = async () => {
     try {
@@ -143,30 +149,38 @@ function Notes() {
     }
   };
 
-  const handleToggleArchive = async (id) => {
+  const handleArchive = async (note) => {
     try {
-      const currentNote = activeTab === 'active' 
-        ? notes.find(n => n._id === id)
-        : archivedNotes.find(n => n._id === id);
-        
-      const action = currentNote.status === 'archived' ? 'unarchive' : 'archive';
-      
       const response = await axios.patch(
-        `http://localhost:5000/api/notes/${id}/${action}`,
+        `http://localhost:5000/api/notes/${note._id}/archive`,
         {},
-        { headers: { Authorization: `Bearer ${token}` } }
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
       );
 
-      if (action === 'archive') {
-        setNotes(prev => prev.filter(n => n._id !== id));
-        setArchivedNotes(prev => [...prev, response.data]);
+      // Notları güncelle
+      if (activeTab === 'active') {
+        setNotes(prevNotes => prevNotes.filter(n => n._id !== note._id));
+        setArchivedNotes(prevNotes => [...prevNotes, response.data.note]);
       } else {
-        setArchivedNotes(prev => prev.filter(n => n._id !== id));
-        setNotes(prev => [...prev, response.data]);
+        setArchivedNotes(prevNotes => prevNotes.filter(n => n._id !== note._id));
+        setNotes(prevNotes => [...prevNotes, response.data.note]);
       }
+
+      // Başarı mesajı göster
+      setSnackbar({
+        open: true,
+        message: response.data.message,
+        severity: 'success'
+      });
     } catch (error) {
-      console.error('Archive toggle error:', error);
-      setError('Arşivleme işlemi başarısız oldu');
+      console.error('Note archive error:', error);
+      setSnackbar({
+        open: true,
+        message: 'Not arşivlenirken bir hata oluştu',
+        severity: 'error'
+      });
     }
   };
 
@@ -174,8 +188,8 @@ function Notes() {
     <Grid item xs={12} sm={6} md={4} lg={3} key={note._id}>
       <Card 
         sx={{ 
-          height: '100%', 
-          display: 'flex', 
+          height: '100%',
+          display: 'flex',
           flexDirection: 'column',
           cursor: 'pointer',
           '&:hover': {
@@ -263,7 +277,7 @@ function Notes() {
             size="small" 
             onClick={(e) => {
               e.stopPropagation();
-              handleToggleArchive(note._id);
+              handleArchive(note);
             }}
           >
             {note.status === 'archived' ? 
@@ -344,6 +358,19 @@ function Notes() {
         onNoteSaved={handleNoteAdded}
         note={editingNote}
       />
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+      >
+        <Alert 
+          onClose={() => setSnackbar({ ...snackbar, open: false })} 
+          severity={snackbar.severity}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Container>
   );
 }

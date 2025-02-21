@@ -27,22 +27,22 @@ import { AttachFile as AttachFileIcon, Delete as DeleteIcon, Close as CloseIcon 
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 
-const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransaction = null }) => {
+const TransactionForm = ({ open, handleClose, onTransactionAdded, onTransactionUpdated, editingTransaction }) => {
   const { token } = useAuth();
   const [error, setError] = useState('');
   const [formData, setFormData] = useState({
-    type: editingTransaction?.type || 'expense',
-    amount: editingTransaction?.amount || '',
-    category: editingTransaction?.category || '',
-    description: editingTransaction?.description || '',
-    date: editingTransaction?.date ? new Date(editingTransaction.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-    attachments: editingTransaction?.attachments || [],
+    type: 'expense',
+    amount: '',
+    category: '',
+    description: '',
+    date: new Date().toISOString().split('T')[0]
   });
+  
   const [selectedFiles, setSelectedFiles] = useState([]);
+  const [attachments, setAttachments] = useState([]);
   const [categories, setCategories] = useState([]);
   const [showCustomCategory, setShowCustomCategory] = useState(false);
   const [customCategory, setCustomCategory] = useState('');
-  const [attachments, setAttachments] = useState([]);
 
   useEffect(() => {
     if (editingTransaction) {
@@ -51,7 +51,7 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
         amount: editingTransaction.amount.toString(),
         category: editingTransaction.category,
         description: editingTransaction.description || '',
-        date: new Date(editingTransaction.date).toISOString().split('T')[0],
+        date: new Date(editingTransaction.date).toISOString().split('T')[0]
       });
       setAttachments(editingTransaction.attachments || []);
     } else {
@@ -115,37 +115,46 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
     }
   };
 
-  const handleFileChange = (event) => {
-    const files = Array.from(event.target.files);
-    
-    // Dosya boyutu kontrolü
-    for (const file of files) {
-      if (file.size > 5 * 1024 * 1024) {
-        setError('Dosya boyutu 5MB\'dan küçük olmalıdır');
-        return;
+  const handleFileSelect = (event) => {
+    try {
+      if (event.target.files && event.target.files.length > 0) {
+        const files = Array.from(event.target.files);
+        
+        const validFiles = files.filter(file => {
+          if (file.size > 5 * 1024 * 1024) {
+            setError('Bazı dosyalar 5MB\'dan büyük olduğu için eklenmedi');
+            return false;
+          }
+          return true;
+        });
+
+        setSelectedFiles(prevFiles => [...prevFiles, ...validFiles]);
+      }
+    } catch (error) {
+      console.error('File selection error:', error);
+      setError('Dosya seçiminde bir hata oluştu');
+    } finally {
+      if (event.target) {
+        event.target.value = '';
       }
     }
-    
-    setSelectedFiles(prev => [...prev, ...files]);
-    event.target.value = ''; // Input'u temizle
   };
 
-  const handleRemoveFile = (index) => {
-    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+  const handleFileRemove = (index) => {
+    setSelectedFiles(prevFiles => prevFiles.filter((_, i) => i !== index));
   };
 
   const resetForm = () => {
     setFormData({
-      type: '',
+      type: 'expense',
       amount: '',
       category: '',
       description: '',
       date: new Date().toISOString().split('T')[0]
     });
+    setCustomCategory('');
     setSelectedFiles([]);
     setAttachments([]);
-    setCustomCategory('');
-    setShowCustomCategory(false);
     setError(null);
   };
 
@@ -156,53 +165,58 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
       const formDataToSend = new FormData();
       formDataToSend.append('type', formData.type);
       formDataToSend.append('amount', parseFloat(formData.amount));
-      formDataToSend.append('category', formData.category);
-      if (formData.category === 'Diğer' && customCategory) {
-        formDataToSend.append('customCategory', customCategory);
-      }
-      formDataToSend.append('description', formData.description || '');
+      formDataToSend.append('category', formData.category === 'Diğer' ? customCategory : formData.category);
+      formDataToSend.append('description', formData.description);
       formDataToSend.append('date', formData.date);
-      
-      // Mevcut belgelerin ID'lerini ekle
-      attachments.forEach(attachment => {
-        formDataToSend.append('existingAttachments[]', attachment._id);
-      });
 
-      // Yeni dosyaları ekle
-      selectedFiles.forEach(file => {
-        formDataToSend.append('files', file);
-      });
+      if (editingTransaction && attachments.length > 0) {
+        attachments.forEach(attachment => {
+          formDataToSend.append('existingAttachments[]', attachment._id);
+        });
+      }
 
-      const config = {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'multipart/form-data'
-        }
-      };
+      if (selectedFiles && selectedFiles.length > 0) {
+        selectedFiles.forEach(file => {
+          formDataToSend.append('files', file);
+        });
+      }
 
       let response;
       if (editingTransaction) {
         response = await axios.put(
           `http://localhost:5000/api/transactions/${editingTransaction._id}`,
           formDataToSend,
-          config
+          {
+            headers: {
+              'Content-Type': 'multipart/form-data',
+              Authorization: `Bearer ${token}`
+            }
+          }
         );
+        if (onTransactionUpdated) {
+          onTransactionUpdated(response.data);
+        }
       } else {
         response = await axios.post(
           'http://localhost:5000/api/transactions',
           formDataToSend,
-          config
+          {
+            headers: {
+              'Content-Type': 'multipart/form-data',
+              Authorization: `Bearer ${token}`
+            }
+          }
         );
+        if (onTransactionAdded) {
+          onTransactionAdded(response.data);
+        }
       }
 
-      if (response.data) {
-        onTransactionAdded(response.data);
-        handleClose();
-        resetForm();
-      }
+      handleClose();
+      resetForm();
     } catch (error) {
       console.error('Transaction save error:', error);
-      setError(error.response?.data?.message || 'İşlem kaydedilirken bir hata oluştu');
+      setError('İşlem kaydedilirken bir hata oluştu');
     }
   };
 
@@ -212,8 +226,7 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
         `http://localhost:5000/api/documents/${attachmentId}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setSelectedFiles(prev => prev.filter(att => att._id !== attachmentId));
-      setAttachments(prev => prev.filter(att => att._id !== attachmentId));
+      setAttachments(prevAttachments => prevAttachments.filter(att => att._id !== attachmentId));
     } catch (error) {
       console.error('Remove attachment error:', error);
       setError('Belge silinirken bir hata oluştu');
@@ -246,61 +259,6 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
       </TableRow>
     );
   };
-
-  const FileList = () => (
-    <List>
-      {selectedFiles.map((file, index) => (
-        <ListItem key={`new-${index}`}>
-          <ListItemText 
-            primary={file.name}
-            secondary={`${(file.size / 1024).toFixed(2)} KB`}
-          />
-          <ListItemSecondaryAction>
-            <IconButton
-              edge="end"
-              onClick={() => handleRemoveFile(index)}
-            >
-              <DeleteIcon />
-            </IconButton>
-          </ListItemSecondaryAction>
-        </ListItem>
-      ))}
-      
-      {attachments.map((attachment) => (
-        <ListItem key={attachment._id}>
-          <Box sx={{ flex: 1 }}>
-            <Typography variant="body1">
-              {attachment.title}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {attachment.fileType}
-            </Typography>
-            {attachment.fileType.startsWith('image/') && (
-              <Box sx={{ mt: 1 }}>
-                <img 
-                  src={`http://localhost:5000/uploads/${attachment.path}`}
-                  alt={attachment.title}
-                  style={{ 
-                    maxWidth: '100%', 
-                    maxHeight: '100px',
-                    objectFit: 'contain'
-                  }}
-                />
-              </Box>
-            )}
-          </Box>
-          <ListItemSecondaryAction>
-            <IconButton
-              edge="end"
-              onClick={() => handleRemoveAttachment(attachment._id)}
-            >
-              <DeleteIcon />
-            </IconButton>
-          </ListItemSecondaryAction>
-        </ListItem>
-      ))}
-    </List>
-  );
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
@@ -398,27 +356,57 @@ const TransactionForm = ({ open, handleClose, onTransactionAdded, editingTransac
               }}
             />
 
-            {/* Dosya Ekleme Bölümü */}
             <Box sx={{ mt: 2 }}>
-              <Button
-                variant="outlined"
-                component="label"
-                startIcon={<AttachFileIcon />}
-                fullWidth
-              >
-                Belge Ekle
-                <input
-                  type="file"
-                  hidden
-                  multiple
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  onChange={handleFileChange}
-                />
-              </Button>
+              <input
+                type="file"
+                multiple
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={handleFileSelect}
+                style={{ display: 'none' }}
+                id="file-input"
+              />
+              <label htmlFor="file-input">
+                <Button
+                  component="span"
+                  variant="outlined"
+                  startIcon={<AttachFileIcon />}
+                  sx={{ mb: 1 }}
+                >
+                  Belge Ekle
+                </Button>
+              </label>
             </Box>
 
-            {/* Dosya Listesi */}
-            {(selectedFiles.length > 0 || attachments.length > 0) && <FileList />}
+            {((selectedFiles && selectedFiles.length > 0) || (attachments && attachments.length > 0)) && (
+              <List>
+                {selectedFiles.map((file, index) => (
+                  <ListItem key={`new-${index}`}>
+                    <ListItemText 
+                      primary={file.name}
+                      secondary={`${(file.size / 1024 / 1024).toFixed(2)} MB`}
+                    />
+                    <ListItemSecondaryAction>
+                      <IconButton edge="end" onClick={() => handleFileRemove(index)}>
+                        <DeleteIcon />
+                      </IconButton>
+                    </ListItemSecondaryAction>
+                  </ListItem>
+                ))}
+                {attachments.map((attachment) => (
+                  <ListItem key={`existing-${attachment._id}`}>
+                    <ListItemText 
+                      primary={attachment.title}
+                      secondary={attachment.fileType}
+                    />
+                    <ListItemSecondaryAction>
+                      <IconButton edge="end" onClick={() => handleRemoveAttachment(attachment._id)}>
+                        <DeleteIcon />
+                      </IconButton>
+                    </ListItemSecondaryAction>
+                  </ListItem>
+                ))}
+              </List>
+            )}
           </Box>
         </DialogContent>
         <DialogActions>

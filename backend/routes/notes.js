@@ -6,8 +6,11 @@ const Note = require('../models/Note');
 // Tüm notları getir
 router.get('/', auth, async (req, res) => {
   try {
-    const notes = await Note.find({ user: req.user.id })
-      .sort({ isReminder: -1, reminderDate: 1, createdAt: -1 });
+    const notes = await Note.find({ 
+      user: req.user.id,
+      status: 'active'  // Sadece aktif notları getir
+    }).sort({ isPinned: -1, updatedAt: -1 });
+    
     res.json(notes);
   } catch (error) {
     console.error('Notes fetch error:', error);
@@ -35,10 +38,11 @@ router.get('/archived', auth, async (req, res) => {
       user: req.user.id,
       status: 'archived'
     }).sort({ updatedAt: -1 });
+    
     res.json(notes);
   } catch (error) {
     console.error('Archived notes fetch error:', error);
-    res.status(500).json({ message: 'Arşivlenmiş notlar alınamadı' });
+    res.status(500).json({ message: 'Arşivlenmiş notlar alınırken bir hata oluştu' });
   }
 });
 
@@ -131,43 +135,29 @@ router.delete('/:id', auth, async (req, res) => {
   }
 });
 
-// Arşivleme işlemi
+// Not arşivle/arşivden çıkar
 router.patch('/:id/archive', auth, async (req, res) => {
   try {
-    const note = await Note.findOneAndUpdate(
-      { _id: req.params.id, user: req.user.id },
-      { status: 'archived' },
-      { new: true }
-    );
+    const note = await Note.findOne({
+      _id: req.params.id,
+      user: req.user.id
+    });
 
     if (!note) {
       return res.status(404).json({ message: 'Not bulunamadı' });
     }
 
-    res.json(note);
+    // Status'u tersine çevir
+    note.status = note.status === 'active' ? 'archived' : 'active';
+    await note.save();
+
+    res.json({
+      message: `Not ${note.status === 'archived' ? 'arşivlendi' : 'arşivden çıkarıldı'}`,
+      note
+    });
   } catch (error) {
-    console.error('Archive error:', error);
-    res.status(500).json({ message: 'Arşivleme işlemi başarısız oldu' });
-  }
-});
-
-// Arşivden çıkarma işlemi
-router.patch('/:id/unarchive', auth, async (req, res) => {
-  try {
-    const note = await Note.findOneAndUpdate(
-      { _id: req.params.id, user: req.user.id },
-      { status: 'active' },
-      { new: true }
-    );
-
-    if (!note) {
-      return res.status(404).json({ message: 'Not bulunamadı' });
-    }
-
-    res.json(note);
-  } catch (error) {
-    console.error('Unarchive error:', error);
-    res.status(500).json({ message: 'Arşivden çıkarma işlemi başarısız oldu' });
+    console.error('Note archive error:', error);
+    res.status(500).json({ message: 'Not arşivlenirken bir hata oluştu' });
   }
 });
 

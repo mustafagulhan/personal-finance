@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const Debt = require('../models/Debt');
+const Document = require('../models/Document');
+const upload = require('../middleware/upload');
 
 // Tüm borçları getir
 router.get('/', auth, async (req, res) => {
@@ -18,9 +20,25 @@ router.get('/', auth, async (req, res) => {
 });
 
 // Yeni borç ekle
-router.post('/', auth, async (req, res) => {
+router.post('/', auth, upload.array('files'), async (req, res) => {
   try {
     const { title, amount, description, dueDate, category } = req.body;
+    
+    // Dosyaları kaydet
+    const attachments = [];
+    if (req.files) {
+      for (const file of req.files) {
+        const document = new Document({
+          userId: req.user.id,
+          title: file.originalname,
+          path: file.path,
+          fileType: file.mimetype,
+          fileSize: file.size
+        });
+        await document.save();
+        attachments.push(document._id);
+      }
+    }
 
     const debt = new Debt({
       userId: req.user.id,
@@ -28,7 +46,8 @@ router.post('/', auth, async (req, res) => {
       amount: parseFloat(amount),
       description,
       dueDate,
-      category
+      category,
+      attachments
     });
 
     await debt.save();

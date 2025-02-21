@@ -25,17 +25,17 @@ router.get('/', auth, async (req, res) => {
     // Toplam gelir ve giderleri hesapla
     const [incomeResult, expenseResult] = await Promise.all([
       Transaction.aggregate([
-        {
-          $match: {
+      {
+        $match: {
             userId: new mongoose.Types.ObjectId(req.user.id),
             type: 'income',
             date: { $gte: startDate },
             isVaultTransaction: { $ne: true }
-          }
-        },
-        {
-          $group: {
-            _id: null,
+        }
+      },
+      {
+        $group: {
+          _id: null,
             total: { $sum: '$amount' }
           }
         }
@@ -61,16 +61,16 @@ router.get('/', auth, async (req, res) => {
     // Kategori bazlı gelir ve giderleri hesapla
     const [incomeByCategory, expenseByCategory] = await Promise.all([
       Transaction.aggregate([
-        {
-          $match: {
+      {
+        $match: {
             userId: new mongoose.Types.ObjectId(req.user.id),
             type: 'income',
             date: { $gte: startDate },
             isVaultTransaction: { $ne: true }
-          }
-        },
-        {
-          $group: {
+        }
+      },
+      {
+        $group: {
             _id: '$category',
             total: { $sum: '$amount' }
           }
@@ -415,16 +415,16 @@ router.get('/chart-data', auth, async (req, res) => {
 
     const [incomeData, expenseData] = await Promise.all([
       Transaction.aggregate([
-        {
-          $match: {
+      {
+        $match: {
             userId: new mongoose.Types.ObjectId(req.user.id),
             type: 'income',
             date: { $gte: startDate },
             isVaultTransaction: { $ne: true }
-          }
-        },
-        {
-          $group: {
+        }
+      },
+      {
+        $group: {
             _id: groupBy,
             total: { $sum: '$amount' }
           }

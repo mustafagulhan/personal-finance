@@ -45,6 +45,11 @@ function Transactions() {
   const [expandedRow, setExpandedRow] = useState(null);
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
   const [viewingImage, setViewingImage] = useState(null);
+  const [balances, setBalances] = useState({
+    netBalance: 0,
+    vaultBalance: 0,
+    totalBalance: 0
+  });
   const theme = useTheme();
 
   // Sıralama fonksiyonunu ayrı bir yardımcı fonksiyon olarak tanımlayalım
@@ -85,9 +90,28 @@ function Transactions() {
     }
   };
 
+  // Bakiyeleri getir
+  const fetchBalances = async () => {
+    try {
+      const response = await axios.get('http://localhost:5000/api/transactions/summary', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      setBalances({
+        netBalance: response.data.netBalance,
+        vaultBalance: response.data.vaultBalance,
+        totalBalance: response.data.totalBalance
+      });
+    } catch (error) {
+      console.error('Balances fetch error:', error);
+      setError('Bakiyeler alınırken bir hata oluştu');
+    }
+  };
+
   useEffect(() => {
     if (token) {
       fetchTransactions();
+      fetchBalances();
     }
   }, [token]);
 
@@ -224,6 +248,17 @@ function Transactions() {
       console.error('Download error:', error);
       setError('Dosya indirilirken bir hata oluştu');
     }
+  };
+
+  const handleTransactionUpdated = async (updatedTransaction) => {
+    // İşlemler listesini güncelle
+    setTransactions(prevTransactions =>
+      prevTransactions.map(transaction =>
+        transaction._id === updatedTransaction._id ? updatedTransaction : transaction
+      )
+    );
+    // Bakiyeleri yeniden yükle
+    fetchBalances();
   };
 
   // Loading durumunu göster
@@ -396,6 +431,7 @@ function Transactions() {
         open={openForm}
         handleClose={handleCloseForm}
         onTransactionAdded={handleTransactionAdded}
+        onTransactionUpdated={handleTransactionUpdated}
         editingTransaction={editingTransaction}
       />
     </Container>

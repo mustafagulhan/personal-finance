@@ -25,7 +25,9 @@ import {
   Paper,
   Grid,
   Divider,
-  useTheme
+  useTheme,
+  Stack,
+  InputAdornment
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -33,37 +35,54 @@ import {
   TrendingDown as ExpenseIcon,
   AccountBalanceWallet,
   History as HistoryIcon,
-  AccountBalance as BalanceIcon
+  AccountBalance
 } from '@mui/icons-material';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import PageTitle from '../components/PageTitle';
 
-function Vault() {
+const Vault = () => {
   const { token } = useAuth();
-  const [vault, setVault] = useState({ balance: 0 });
-  const [openForm, setOpenForm] = useState(false);
+  const [vault, setVault] = useState(null);
+  const [transactions, setTransactions] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [openForm, setOpenForm] = useState(false);
   const [formData, setFormData] = useState({
     type: 'vault-in',
     amount: '',
     description: ''
   });
-  const [transactions, setTransactions] = useState([]);
-  const [netBalance, setNetBalance] = useState(0);
-  const [successMessage, setSuccessMessage] = useState(null);
-  const theme = useTheme();
+  const [formBalance, setFormBalance] = useState({
+    netBalance: 0,
+    vaultBalance: 0,
+    totalBalance: 0
+  });
 
-  const fetchVaultBalance = async () => {
+  const fetchVaultData = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/vault', {
-        headers: { Authorization: `Bearer ${token}` }
+      const [summaryResponse, transactionsResponse] = await Promise.all([
+        axios.get('http://localhost:5000/api/transactions/summary', {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        axios.get('http://localhost:5000/api/vault/transactions', {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+      ]);
+
+      setVault({
+        vaultBalance: summaryResponse.data.vaultBalance,
+        regularBalance: summaryResponse.data.netBalance,
+        totalBalance: summaryResponse.data.totalBalance,
+        netBalance: summaryResponse.data.netBalance
       });
-      setVault(response.data);
+      setTransactions(transactionsResponse.data);
       setError(null);
     } catch (error) {
       console.error('Vault fetch error:', error);
       setError('Kasa bilgisi alınamadı');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -80,39 +99,31 @@ function Vault() {
     }
   };
 
+  const fetchBalances = async () => {
+    try {
+      const response = await axios.get('http://localhost:5000/api/transactions/summary', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      setFormBalance({
+        netBalance: response.data.netBalance,
+        vaultBalance: response.data.vaultBalance,
+        totalBalance: response.data.totalBalance
+      });
+    } catch (error) {
+      console.error('Balance fetch error:', error);
+    }
+  };
+
   useEffect(() => {
     if (token) {
       Promise.all([
-        fetchVaultBalance(),
-        fetchTransactions()
+        fetchVaultData(),
+        fetchTransactions(),
+        fetchBalances()
       ]);
     }
   }, [token]);
-
-  useEffect(() => {
-    const fetchNetBalance = async () => {
-      try {
-        const response = await axios.get('http://localhost:5000/api/transactions', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        const balance = response.data.reduce((acc, curr) => {
-          if (curr.type === 'income') return acc + curr.amount;
-          if (curr.type === 'expense') return acc - curr.amount;
-          return acc;
-        }, 0);
-
-        setNetBalance(balance);
-      } catch (error) {
-        console.error('Net balance fetch error:', error);
-        setError('Net bakiye hesaplanamadı');
-      }
-    };
-
-    if (token) {
-      fetchNetBalance();
-    }
-  }, [token, transactions]);
 
   const handleTransfer = async (formData) => {
     try {
@@ -124,286 +135,197 @@ function Vault() {
         }
       );
 
-      // Kasa bakiyesini güncelle
-      setVault(response.data.vault);
-
-      // İşlemleri yeniden yükle
-      fetchTransactions();
-      fetchVaultBalance();
-
-      // Modal'ı kapat
+      // İşlem başarılı olduktan sonra:
+      // 1. Bakiyeyi güncelle
+      await fetchVaultData();
+      // 2. İşlemleri güncelle
+      await fetchTransactions();
+      // 3. Modal'ı kapat
       setOpenForm(false);
+      // 4. Hata mesajını temizle
+      setError(null);
 
-      // Başarı mesajı göster
-      setSuccessMessage(
-        formData.type === 'vault-in' 
-          ? 'Para başarıyla kasaya eklendi' 
-          : 'Para başarıyla kasadan çekildi'
-      );
     } catch (error) {
       console.error('Transfer error:', error);
       setError(error.response?.data?.message || 'İşlem sırasında bir hata oluştu');
     }
   };
 
+  const handleOpenDialog = () => {
+    fetchBalances();
+    setOpenForm(true);
+  };
+
+  const handleCloseDialog = () => {
+    setOpenForm(false);
+    setFormData({
+      type: 'vault-in',
+      amount: '',
+      description: ''
+    });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await axios.post('http://localhost:5000/api/vault/transfer', formData, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      // İşlem başarılı olduğunda
+      setOpenForm(false);
+      setFormData({ type: 'vault-in', amount: '', description: '' });
+      
+      // Tüm verileri yenile
+      await Promise.all([
+        fetchVaultData(),
+        fetchTransactions(),
+        fetchBalances()
+      ]);
+
+    } catch (error) {
+      if (error.response?.data?.message) {
+        setError(error.response.data.message);
+      } else {
+        setError('İşlem sırasında bir hata oluştu');
+      }
+    }
+  };
+
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+      <Box sx={{ mb: 4 }}>
+        <PageTitle title="Kasa" />
+      </Box>
+
+      <Card 
+        sx={{ 
+          mb: 4,
+          background: (theme) => `linear-gradient(45deg, ${theme.palette.primary.main} 30%, ${theme.palette.primary.dark} 90%)`,
+          color: 'white',
+          boxShadow: '0 8px 16px rgba(0,0,0,0.1)',
+          borderRadius: 2
+        }}
+      >
+        <CardContent sx={{ py: 4 }}>
+          <Box sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            mb: 3,
+            opacity: 0.9
+          }}>
+            <AccountBalance sx={{ 
+              mr: 2, 
+              fontSize: 40,
+              background: 'rgba(255,255,255,0.2)',
+              borderRadius: '50%',
+              p: 1
+            }} />
+            <Typography variant="h5" sx={{ fontWeight: 500 }}>
+              Kasa Bakiyesi
+            </Typography>
+          </Box>
+          <Typography variant="h2" component="div" sx={{ 
+            fontWeight: 'bold',
+            textShadow: '2px 2px 4px rgba(0,0,0,0.2)'
+          }}>
+            ₺{vault?.vaultBalance?.toFixed(2) || '0.00'}
+          </Typography>
+        </CardContent>
+      </Card>
+
       <Box sx={{ 
         display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'flex-start',
+        justifyContent: 'flex-end', 
         mb: 4
       }}>
-        <PageTitle title="Kasa Yönetimi" />
         <Button
           variant="contained"
           startIcon={<AddIcon />}
-          onClick={() => setOpenForm(true)}
+          onClick={handleOpenDialog}
         >
           İşlem Ekle
         </Button>
       </Box>
 
-      <Grid container spacing={3}>
-        {/* Özet Kartları */}
-        <Grid item xs={12}>
-          <Grid container spacing={3}>
-            {/* Kasa Bakiyesi Kartı */}
-            <Grid item xs={12} md={6}>
-              <Card 
-                sx={{ 
-                  height: '100%',
-                  background: theme.palette.mode === 'dark'
-                    ? 'linear-gradient(45deg, #4a148c 30%, #6a1b9a 90%)'
-                    : 'linear-gradient(45deg, #9c27b0 30%, #ab47bc 90%)',
-                  color: 'white',
-                  position: 'relative',
-                  overflow: 'hidden'
-                }}
-              >
-                <Box
-                  sx={{
-                    position: 'absolute',
-                    top: -15,
-                    right: -15,
-                    opacity: 0.1,
-                    transform: 'rotate(30deg)'
-                  }}
-                >
-                  <AccountBalanceWallet sx={{ fontSize: 150 }} />
-                </Box>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                    <Box
-                      sx={{
-                        bgcolor: 'rgba(255, 255, 255, 0.2)',
-                        borderRadius: '50%',
-                        p: 1,
-                        mr: 2,
+      <Card>
+        <CardContent>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+            <HistoryIcon sx={{ mr: 2, color: 'primary.main' }} />
+            <Typography variant="h6">
+              İşlem Geçmişi
+            </Typography>
+          </Box>
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Tarih</TableCell>
+                  <TableCell>İşlem Türü</TableCell>
+                  <TableCell>Açıklama</TableCell>
+                  <TableCell align="right">Tutar</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {transactions.map((transaction) => (
+                  <TableRow 
+                    key={transaction._id}
+                    sx={{ 
+                      '&:hover': { 
+                        bgcolor: 'action.hover'
+                      }
+                    }}
+                  >
+                    <TableCell>
+                      {new Date(transaction.date).toLocaleDateString('tr-TR')}
+                    </TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        {transaction.type === 'vault-in' ? (
+                          <IncomeIcon sx={{ color: 'success.main', mr: 1 }} />
+                        ) : (
+                          <ExpenseIcon sx={{ color: 'error.main', mr: 1 }} />
+                        )}
+                        {transaction.type === 'vault-in' ? 'Para Ekle' : 'Para Çek'}
+                      </Box>
+                    </TableCell>
+                    <TableCell>{transaction.description}</TableCell>
+                    <TableCell 
+                      align="right"
+                      sx={{ 
+                        color: transaction.type === 'vault-in' 
+                          ? 'success.main' 
+                          : 'error.main',
+                        fontWeight: 'bold'
                       }}
                     >
-                      <AccountBalanceWallet />
-                    </Box>
-                    <Typography variant="h6">
-                      Kasa Bakiyesi
-                    </Typography>
-                  </Box>
-                  <Typography variant="h3" sx={{ mb: 1 }}>
-                    ₺{vault.balance.toFixed(2)}
-                  </Typography>
-                  <Typography variant="body2" sx={{ opacity: 0.8 }}>
-                    Kasadaki mevcut para
-                  </Typography>
-                  <Typography variant="body2" sx={{ mt: 2, opacity: 0.8 }}>
-                    Mevcut Net Bakiye: ₺{netBalance.toFixed(2)}
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
+                      {transaction.type === 'vault-in' ? '+' : '-'}
+                      ₺{transaction.amount.toFixed(2)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </CardContent>
+      </Card>
 
-            {/* İşlem İstatistikleri */}
-            <Grid item xs={12} md={6}>
-              <Card sx={{ height: '100%' }}>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    İşlem İstatistikleri
-                  </Typography>
-                  <Grid container spacing={3}>
-                    <Grid item xs={12} sm={6}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                        <Box
-                          sx={{
-                            bgcolor: 'success.light',
-                            borderRadius: '50%',
-                            p: 1,
-                            mr: 2
-                          }}
-                        >
-                          <IncomeIcon sx={{ color: 'success.main' }} />
-                        </Box>
-                        <Box>
-                          <Typography variant="body2" color="text.secondary">
-                            Toplam Para Girişi
-                          </Typography>
-                          <Typography variant="h6">
-                            ₺{transactions
-                              .filter(t => t.type === 'vault-in')
-                              .reduce((sum, t) => sum + t.amount, 0)
-                              .toFixed(2)}
-                          </Typography>
-                        </Box>
-                      </Box>
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                        <Box
-                          sx={{
-                            bgcolor: 'error.light',
-                            borderRadius: '50%',
-                            p: 1,
-                            mr: 2
-                          }}
-                        >
-                          <ExpenseIcon sx={{ color: 'error.main' }} />
-                        </Box>
-                        <Box>
-                          <Typography variant="body2" color="text.secondary">
-                            Toplam Para Çıkışı
-                          </Typography>
-                          <Typography variant="h6">
-                            ₺{transactions
-                              .filter(t => t.type === 'vault-out')
-                              .reduce((sum, t) => sum + t.amount, 0)
-                              .toFixed(2)}
-                          </Typography>
-                        </Box>
-                      </Box>
-                    </Grid>
-                  </Grid>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-        </Grid>
-
-        {/* İşlem Geçmişi */}
-        <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                <HistoryIcon sx={{ mr: 2, color: 'primary.main' }} />
-                <Typography variant="h6">
-                  İşlem Geçmişi
-                </Typography>
-              </Box>
-              <TableContainer>
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Tarih</TableCell>
-                      <TableCell>İşlem Türü</TableCell>
-                      <TableCell>Açıklama</TableCell>
-                      <TableCell align="right">Tutar</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {transactions.map((transaction) => (
-                      <TableRow 
-                        key={transaction._id}
-                        sx={{ 
-                          '&:hover': { 
-                            bgcolor: 'action.hover'
-                          }
-                        }}
-                      >
-                        <TableCell>
-                          {new Date(transaction.date).toLocaleDateString('tr-TR')}
-                        </TableCell>
-                        <TableCell>
-                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                            {transaction.type === 'vault-in' ? (
-                              <IncomeIcon sx={{ color: 'success.main', mr: 1 }} />
-                            ) : (
-                              <ExpenseIcon sx={{ color: 'error.main', mr: 1 }} />
-                            )}
-                            {transaction.type === 'vault-in' ? 'Para Ekle' : 'Para Çek'}
-                          </Box>
-                        </TableCell>
-                        <TableCell>{transaction.description}</TableCell>
-                        <TableCell 
-                          align="right"
-                          sx={{ 
-                            color: transaction.type === 'vault-in' 
-                              ? 'success.main' 
-                              : 'error.main',
-                            fontWeight: 'bold'
-                          }}
-                        >
-                          {transaction.type === 'vault-in' ? '+' : '-'}
-                          ₺{transaction.amount.toFixed(2)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {error && (
-        <Alert severity="error" sx={{ mt: 2 }}>
-          {error}
-        </Alert>
-      )}
-
-      {successMessage && (
-        <Alert severity="success" sx={{ mt: 2 }}>
-          {successMessage}
-        </Alert>
-      )}
-
-      <Dialog open={openForm} onClose={() => setOpenForm(false)}>
-        <form onSubmit={(e) => {
-          e.preventDefault();
-          handleTransfer(formData);
+      <Dialog 
+        open={openForm} 
+        onClose={handleCloseDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ 
+          pb: 1,
+          borderBottom: '1px solid',
+          borderColor: 'divider'
         }}>
-          <DialogTitle>
-            Kasa İşlemi
-          </DialogTitle>
-          <DialogContent>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
-              {error && (
-                <Alert severity="error" sx={{ mb: 2 }}>
-                  {error}
-                </Alert>
-              )}
-
-              {/* Net Bakiye Kartı */}
-              <Card sx={{ 
-                background: theme.palette.mode === 'dark'
-                  ? 'linear-gradient(45deg, #1565c0 30%, #1976d2 90%)'
-                  : 'linear-gradient(45deg, #2196f3 30%, #42a5f5 90%)',
-                color: 'white',
-                mb: 2
-              }}>
-                <CardContent sx={{ display: 'flex', alignItems: 'center' }}>
-                  <BalanceIcon sx={{ fontSize: 40, mr: 2 }} />
-                  <Box>
-                    <Typography variant="h6" gutterBottom>
-                      Net Bakiye
-                    </Typography>
-                    <Typography variant="h4">
-                      ₺{netBalance.toFixed(2)}
-                    </Typography>
-                    <Typography variant="body2" sx={{ opacity: 0.8 }}>
-                      Güncel durum
-                    </Typography>
-                  </Box>
-                </CardContent>
-              </Card>
-
+          Kasa İşlemi
+        </DialogTitle>
+        <form onSubmit={handleSubmit}>
+          <DialogContent sx={{ pt: 3 }}>
+            <Stack spacing={3}>
               <FormControl fullWidth>
                 <InputLabel>İşlem Türü</InputLabel>
                 <Select
@@ -411,8 +333,18 @@ function Vault() {
                   onChange={(e) => setFormData({ ...formData, type: e.target.value })}
                   required
                 >
-                  <MenuItem value="vault-in">Para Ekle</MenuItem>
-                  <MenuItem value="vault-out">Para Çek</MenuItem>
+                  <MenuItem value="vault-in">
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <IncomeIcon sx={{ mr: 1, color: 'success.main' }} />
+                      Para Ekle
+                    </Box>
+                  </MenuItem>
+                  <MenuItem value="vault-out">
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <ExpenseIcon sx={{ mr: 1, color: 'error.main' }} />
+                      Para Çek
+                    </Box>
+                  </MenuItem>
                 </Select>
               </FormControl>
 
@@ -423,11 +355,21 @@ function Vault() {
                 onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
                 required
                 inputProps={{ min: 0, step: "0.01" }}
-                error={formData.type === 'vault-in' && parseFloat(formData.amount) > netBalance}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">₺</InputAdornment>
+                  ),
+                }}
+                error={
+                  (formData.type === 'vault-out' && parseFloat(formData.amount) > vault?.vaultBalance) ||
+                  (formData.type === 'vault-in' && parseFloat(formData.amount) > vault?.netBalance)
+                }
                 helperText={
-                  formData.type === 'vault-in' && parseFloat(formData.amount) > netBalance 
-                    ? 'Tutar net bakiyeden fazla olamaz' 
-                    : ''
+                  formData.type === 'vault-out' && parseFloat(formData.amount) > vault?.vaultBalance
+                    ? 'Kasada yeterli bakiye yok'
+                    : formData.type === 'vault-in' && parseFloat(formData.amount) > vault?.netBalance
+                    ? 'Eklenecek tutar net bakiyeden fazla olamaz'
+                    : ' '
                 }
               />
 
@@ -435,19 +377,33 @@ function Vault() {
                 label="Açıklama"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                required
+                multiline
+                rows={2}
+                placeholder="İşlem açıklaması (isteğe bağlı)"
               />
-            </Box>
+
+              {error && (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  {error}
+                </Alert>
+              )}
+            </Stack>
           </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setOpenForm(false)}>İptal</Button>
+          <DialogActions sx={{ 
+            px: 3, 
+            py: 2,
+            borderTop: '1px solid',
+            borderColor: 'divider'
+          }}>
+            <Button onClick={handleCloseDialog}>İptal</Button>
             <Button 
               type="submit" 
               variant="contained"
               disabled={
                 !formData.amount || 
                 parseFloat(formData.amount) <= 0 || 
-                (formData.type === 'vault-in' && parseFloat(formData.amount) > netBalance)
+                (formData.type === 'vault-out' && parseFloat(formData.amount) > vault?.vaultBalance) ||
+                (formData.type === 'vault-in' && parseFloat(formData.amount) > vault?.netBalance)
               }
             >
               İşlemi Gerçekleştir
@@ -457,6 +413,6 @@ function Vault() {
       </Dialog>
     </Container>
   );
-}
+};
 
 export default Vault; 

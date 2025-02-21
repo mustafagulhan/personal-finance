@@ -10,7 +10,8 @@ import {
   Switch,
   Box,
   Alert,
-  IconButton
+  IconButton,
+  Typography
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { useAuth } from '../contexts/AuthContext';
@@ -26,6 +27,32 @@ const NoteForm = ({ open, onClose, onNoteSaved, note = null }) => {
     reminderDate: '',
   });
 
+  // Form sıfırlama fonksiyonu
+  const resetForm = () => {
+    setFormData({
+      title: '',
+      content: '',
+      isReminder: false,
+      reminderDate: '',
+    });
+    setError('');
+  };
+
+  // Form kapatma işleyicisi
+  const handleClose = () => {
+    console.log('Form kapatılıyor...'); // Debug için
+    setFormData({
+      title: '',
+      content: '',
+      isReminder: false,
+      reminderDate: '',
+    });
+    setError('');
+    if (onClose) {
+      onClose();
+    }
+  };
+
   useEffect(() => {
     if (note) {
       setFormData({
@@ -38,16 +65,6 @@ const NoteForm = ({ open, onClose, onNoteSaved, note = null }) => {
       resetForm();
     }
   }, [note]);
-
-  const resetForm = () => {
-    setFormData({
-      title: '',
-      content: '',
-      isReminder: false,
-      reminderDate: '',
-    });
-    setError('');
-  };
 
   const handleChange = (e) => {
     const { name, value, checked } = e.target;
@@ -100,19 +117,20 @@ const NoteForm = ({ open, onClose, onNoteSaved, note = null }) => {
   return (
     <Dialog 
       open={open} 
-      onClose={onClose}
-      fullWidth
+      onClose={handleClose}
       maxWidth="sm"
+      fullWidth
     >
-      <DialogTitle sx={{ m: 0, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <DialogTitle>
         {note ? 'Notu Düzenle' : 'Yeni Not'}
         <IconButton
           aria-label="close"
-          onClick={onClose}
+          onClick={handleClose}
           sx={{
             position: 'absolute',
             right: 8,
             top: 8,
+            color: (theme) => theme.palette.grey[500],
           }}
         >
           <CloseIcon />
@@ -177,8 +195,8 @@ const NoteForm = ({ open, onClose, onNoteSaved, note = null }) => {
         </DialogContent>
 
         <DialogActions>
-          <Button onClick={onClose}>İptal</Button>
-          <Button type="submit" variant="contained" color="primary">
+          <Button onClick={handleClose}>İptal</Button>
+          <Button type="submit" variant="contained">
             {note ? 'Güncelle' : 'Kaydet'}
           </Button>
         </DialogActions>

@@ -3,6 +3,7 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const authService = require('../services/auth.service');
+const auth = require('../middleware/auth');
 
 // Kayıt ol
 router.post('/register', async (req, res) => {
@@ -51,6 +52,18 @@ router.get('/me', async (req, res) => {
   } catch (error) {
     console.error('Kullanıcı bilgileri hatası:', error);
     res.status(500).json({ message: 'Sunucu hatası' });
+  }
+});
+
+// Kategorileri yeniden yükle endpoint'i
+router.post('/seed-categories', async (req, res) => {
+  try {
+    const { seedDefaultCategories } = require('../models/Category');
+    await seedDefaultCategories();
+    res.json({ message: 'Kategoriler başarıyla yeniden yüklendi' });
+  } catch (error) {
+    console.error('Seed categories error:', error);
+    res.status(500).json({ message: 'Kategoriler yüklenirken bir hata oluştu' });
   }
 });
 

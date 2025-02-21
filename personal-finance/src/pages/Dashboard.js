@@ -20,7 +20,9 @@ import {
   MenuItem,
   ListItemIcon,
   ListItemText,
-  Fab
+  Fab,
+  CardHeader,
+  Button
 } from '@mui/material';
 import {
   TrendingUp as IncomeIcon,
@@ -77,17 +79,42 @@ function Dashboard() {
   // Verileri yükle
   const fetchDashboardData = async () => {
     try {
-      setLoading(true);
-      const response = await axios.get('http://localhost:5000/api/dashboard', {
-        headers: { Authorization: `Bearer ${token}` }
+      const [summaryResponse, transactionsResponse, notesResponse] = await Promise.all([
+        axios.get('http://localhost:5000/api/transactions/summary', {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        axios.get('http://localhost:5000/api/transactions/recent', {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        axios.get('http://localhost:5000/api/notes/recent', {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+      ]);
+
+      // Debug için
+      console.log('Recent transactions:', transactionsResponse.data);
+
+      setDashboardData({
+        summary: {
+          currentMonth: {
+            income: summaryResponse.data.details?.income || 0,
+            expense: summaryResponse.data.details?.expense || 0,
+            netBalance: summaryResponse.data.netBalance || 0
+          },
+          percentageChanges: {
+            income: 0,
+            expense: 0
+          },
+          vaultBalance: summaryResponse.data.vaultBalance || 0
+        },
+        recentTransactions: transactionsResponse.data || [], // Son işlemler
+        recentNotes: notesResponse.data || []
       });
-      
-      console.log('Dashboard Data:', response.data); // Debug için
-      setDashboardData(response.data);
+
       setError(null);
     } catch (error) {
       console.error('Dashboard data fetch error:', error);
-      setError('Veriler yüklenirken bir hata oluştu');
+      setError('Veriler alınırken bir hata oluştu');
     } finally {
       setLoading(false);
     }
@@ -106,7 +133,7 @@ function Dashboard() {
     return (
       <TableRow key={transaction._id}>
         <TableCell>{new Date(transaction.date).toLocaleDateString()}</TableCell>
-        <TableCell>{transaction.description}</TableCell>
+        <TableCell>{transaction.description || '-'}</TableCell>
         <TableCell>{transaction.category}</TableCell>
         <TableCell>
           <Chip
@@ -179,7 +206,7 @@ function Dashboard() {
 
   const handleNoteModalClose = () => {
     setIsNoteModalOpen(false);
-    fetchRecentNotes(); // Modal kapandığında notları yenile
+    setOpenNoteForm(false);
   };
 
   // İşlem eklendiğinde dashboard verilerini güncelle
@@ -192,8 +219,8 @@ function Dashboard() {
     handleTransactionAdded();
   };
 
-  const handleNoteAdded = (newNote) => {
-    setRecentNotes(prev => [newNote, ...prev].slice(0, 3));
+  const handleNoteAdded = async (note) => {
+    await fetchRecentNotes(); // Notları yenile
     setOpenNoteForm(false);
   };
 
@@ -330,10 +357,20 @@ function Dashboard() {
                         ₺{(dashboardData.summary.vaultBalance || 0).toLocaleString()}
                       </Typography>
                       <Typography variant="caption" color="primary.main">
-                        +{0}% geçen aya göre
+                        Güncel Bakiye
                       </Typography>
                     </Box>
-                    <IconButton size="small" sx={{ backgroundColor: '#6366F115', color: '#6366F1' }}>
+                    <IconButton 
+                      size="small" 
+                      sx={{ 
+                        backgroundColor: '#6366F115', 
+                        color: '#6366F1',
+                        '&:hover': {
+                          backgroundColor: '#6366F130'
+                        }
+                      }}
+                      onClick={() => navigate('/vault')}
+                    >
                       <BalanceIcon />
                     </IconButton>
                   </Box>
@@ -343,31 +380,60 @@ function Dashboard() {
 
             {/* Alt Kartlar */}
             <Grid item xs={12} md={8}>
-              <Card sx={{ height: '100%' }}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                    <Typography variant="h6">Son İşlemler</Typography>
-                    <IconButton size="small" onClick={handleTransactionsMenuOpen}>
-                      <MoreVert />
-                    </IconButton>
-                  </Box>
-                  <TableContainer>
-                    <Table>
-                      <TableHead>
+              <Card>
+                <CardHeader
+                  title={
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Button
+                        onClick={() => navigate('/transactions')}
+                        sx={{ 
+                          color: 'text.primary',
+                          fontSize: '1.25rem',
+                          fontWeight: 500,
+                          p: 0,
+                          '&:hover': {
+                            backgroundColor: 'transparent',
+                            color: 'primary.main'
+                          }
+                        }}
+                      >
+                        Son İşlemler
+                      </Button>
+                      <IconButton
+                        size="small"
+                        onClick={handleTransactionsMenuOpen}
+                      >
+                        <AddIcon />
+                      </IconButton>
+                    </Box>
+                  }
+                />
+                <TableContainer>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Tarih</TableCell>
+                        <TableCell>Açıklama</TableCell>
+                        <TableCell>Kategori</TableCell>
+                        <TableCell>Durum</TableCell>
+                        <TableCell align="right">Tutar</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {dashboardData.recentTransactions.length > 0 ? (
+                        dashboardData.recentTransactions.map(renderTransactionRow)
+                      ) : (
                         <TableRow>
-                          <TableCell>Tarih</TableCell>
-                          <TableCell>Açıklama</TableCell>
-                          <TableCell>Kategori</TableCell>
-                          <TableCell>Durum</TableCell>
-                          <TableCell align="right">Tutar</TableCell>
+                          <TableCell colSpan={5} align="center">
+                            <Typography color="text.secondary">
+                              Henüz işlem bulunmuyor
+                            </Typography>
+                          </TableCell>
                         </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {dashboardData.recentTransactions.map(renderTransactionRow)}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </CardContent>
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
               </Card>
 
               {/* İşlemler Menüsü */}
@@ -394,104 +460,116 @@ function Dashboard() {
               </Menu>
             </Grid>
             <Grid item xs={12} md={4}>
-              <Card sx={{ height: '100%' }}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                    <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <NoteIcon color="primary" />
-                      Son Notlar
-                    </Typography>
-                    <Fab
-                      color="primary"
-                      size="small"
-                      onClick={() => setOpenNoteForm(true)}
-                    >
-                      <AddIcon />
-                    </Fab>
-                  </Box>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    {recentNotes.length > 0 ? (
-                      recentNotes.map((note, index) => (
-                        <React.Fragment key={note._id}>
-                          <Card 
-                            onClick={() => navigate(`/notes/${note._id}`)}
-                            sx={{ 
-                              bgcolor: 'background.subtle',
-                              boxShadow: 'none',
-                              cursor: 'pointer',
-                              '&:hover': {
-                                bgcolor: 'action.hover',
-                                transform: 'translateY(-2px)',
-                              },
-                              transition: 'all 0.2s ease-in-out'
-                            }}
-                          >
-                            <CardContent sx={{ py: 2 }}>
-                              <Typography 
-                                variant="subtitle1" 
-                                sx={{ 
-                                  fontWeight: 600, 
-                                  mb: 1,
-                                  color: 'text.primary'
-                                }}
-                              >
-                                {note.title}
-                              </Typography>
-                              <Typography 
-                                variant="body2" 
-                                color="text.secondary"
-                                sx={{
-                                  display: '-webkit-box',
-                                  WebkitLineClamp: 2,
-                                  WebkitBoxOrient: 'vertical',
-                                  overflow: 'hidden',
-                                  mb: note.isReminder ? 1 : 0,
-                                  opacity: 0.8
-                                }}
-                              >
-                                {note.content}
-                              </Typography>
-                              {note.isReminder && note.reminderDate && (
-                                <Box sx={{ mt: 1 }}>
-                                  <Chip
-                                    size="small"
-                                    icon={<AlarmIcon sx={{ fontSize: '1rem' }} />}
-                                    label={new Date(note.reminderDate).toLocaleDateString()}
-                                    sx={{ 
-                                      bgcolor: 'primary.main',
-                                      color: 'primary.contrastText',
-                                      '& .MuiChip-icon': { color: 'inherit' },
-                                      transition: 'all 0.2s ease-in-out',
-                                      '&:hover': {
-                                        bgcolor: 'primary.dark',
-                                      }
-                                    }}
-                                  />
-                                </Box>
-                              )}
-                            </CardContent>
-                          </Card>
-                          {index < recentNotes.length - 1 && (
-                            <Divider />
-                          )}
-                        </React.Fragment>
-                      ))
-                    ) : (
-                      <Box sx={{ 
-                        py: 4, 
-                        display: 'flex', 
-                        flexDirection: 'column', 
-                        alignItems: 'center',
-                        gap: 1
-                      }}>
-                        <NoteIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
-                        <Typography color="text.secondary">
-                          Henüz not bulunmuyor
-                        </Typography>
-                      </Box>
-                    )}
-                  </Box>
-                </CardContent>
+              <Card>
+                <CardHeader
+                  title={
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Button
+                        onClick={() => navigate('/notes')}
+                        sx={{ 
+                          color: 'text.primary',
+                          fontSize: '1.25rem',
+                          fontWeight: 500,
+                          p: 0,
+                          '&:hover': {
+                            backgroundColor: 'transparent',
+                            color: 'primary.main'
+                          }
+                        }}
+                      >
+                        Son Notlar
+                      </Button>
+                      <IconButton
+                        size="small"
+                        onClick={handleNotesMenuOpen}
+                      >
+                        <AddIcon />
+                      </IconButton>
+                    </Box>
+                  }
+                />
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {recentNotes.length > 0 ? (
+                    recentNotes.map((note, index) => (
+                      <React.Fragment key={note._id}>
+                        <Card 
+                          onClick={() => navigate(`/notes/${note._id}`)}
+                          sx={{ 
+                            bgcolor: 'background.subtle',
+                            boxShadow: 'none',
+                            cursor: 'pointer',
+                            '&:hover': {
+                              bgcolor: 'action.hover',
+                              transform: 'translateY(-2px)',
+                            },
+                            transition: 'all 0.2s ease-in-out'
+                          }}
+                        >
+                          <CardContent sx={{ py: 2 }}>
+                            <Typography 
+                              variant="subtitle1" 
+                              sx={{ 
+                                fontWeight: 600, 
+                                mb: 1,
+                                color: 'text.primary'
+                              }}
+                            >
+                              {note.title}
+                            </Typography>
+                            <Typography 
+                              variant="body2" 
+                              color="text.secondary"
+                              sx={{
+                                display: '-webkit-box',
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: 'vertical',
+                                overflow: 'hidden',
+                                mb: note.isReminder ? 1 : 0,
+                                opacity: 0.8
+                              }}
+                            >
+                              {note.content}
+                            </Typography>
+                            {note.isReminder && note.reminderDate && (
+                              <Box sx={{ mt: 1 }}>
+                                <Chip
+                                  size="small"
+                                  icon={<AlarmIcon sx={{ fontSize: '1rem' }} />}
+                                  label={new Date(note.reminderDate).toLocaleDateString()}
+                                  sx={{ 
+                                    bgcolor: 'primary.main',
+                                    color: 'primary.contrastText',
+                                    '& .MuiChip-icon': { color: 'inherit' },
+                                    transition: 'all 0.2s ease-in-out',
+                                    '&:hover': {
+                                      bgcolor: 'primary.dark',
+                                    }
+                                  }}
+                                />
+                              </Box>
+                            )}
+                          </CardContent>
+                        </Card>
+                        {index < recentNotes.length - 1 && (
+                          <Divider />
+                        )}
+                      </React.Fragment>
+                    ))
+                  ) : (
+                    <Box sx={{ 
+                      py: 4, 
+                      display: 'flex', 
+                      flexDirection: 'column', 
+                      alignItems: 'center',
+                      gap: 1
+                    }}>
+                      <NoteIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
+                      <Typography color="text.secondary">
+                        Henüz not bulunmuyor
+                      </Typography>
+                    </Box>
+                  )}
+                </Box>
               </Card>
 
               {/* Notlar Menüsü */}

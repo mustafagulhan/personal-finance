@@ -18,9 +18,14 @@ app.use(cors({
 app.use(express.json());
 
 // MongoDB Bağlantısı
-connectDB().then(() => {
+connectDB().then(async () => {
   // Bağlantı başarılı olduktan sonra varsayılan kategorileri oluştur
-  seedDefaultCategories();
+  try {
+    await seedDefaultCategories();
+    console.log('Kategoriler başarıyla yüklendi');
+  } catch (error) {
+    console.error('Kategori yükleme hatası:', error);
+  }
 });
 
 // Temp klasörünü oluştur

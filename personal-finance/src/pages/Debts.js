@@ -65,6 +65,7 @@ function Debts() {
     category: '',
     attachments: []
   });
+  const [selectedFiles, setSelectedFiles] = useState([]);
 
   const fetchDebts = async () => {
     try {
@@ -92,28 +93,33 @@ function Debts() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
     try {
-      if (editingDebt) {
-        const response = await axios.put(
-          `http://localhost:5000/api/debts/${editingDebt._id}`,
-          formData,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        setDebts(debts.map(debt => 
-          debt._id === editingDebt._id ? response.data : debt
-        ));
-      } else {
-        const response = await axios.post(
-          'http://localhost:5000/api/debts',
-          formData,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        setDebts([...debts, response.data]);
-      }
+      const formDataToSend = new FormData();
+      Object.keys(formData).forEach(key => {
+        formDataToSend.append(key, formData[key]);
+      });
+      
+      // Dosyaları ekle
+      selectedFiles.forEach(file => {
+        formDataToSend.append('files', file);
+      });
+
+      const response = await axios.post(
+        'http://localhost:5000/api/debts',
+        formDataToSend,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'multipart/form-data'
+          }
+        }
+      );
+
+      setDebts([...debts, response.data]);
       handleCloseForm();
     } catch (error) {
-      console.error('Debt save error:', error);
-      setError('Borç kaydedilirken bir hata oluştu');
+      setError('Borç eklenirken bir hata oluştu');
     }
   };
 
@@ -167,6 +173,7 @@ function Debts() {
       category: '',
       attachments: []
     });
+    setSelectedFiles([]);
   };
 
   const handleFileChange = async (event) => {
@@ -193,10 +200,7 @@ function Debts() {
           }
         );
 
-        setFormData(prev => ({
-          ...prev,
-          attachments: [...prev.attachments, response.data]
-        }));
+        setSelectedFiles(prev => [...prev, response.data]);
         setError(null);
       } catch (error) {
         console.error('File upload error:', error);
@@ -206,10 +210,7 @@ function Debts() {
   };
 
   const handleRemoveAttachment = (attachmentId) => {
-    setFormData(prev => ({
-      ...prev,
-      attachments: prev.attachments.filter(att => att._id !== attachmentId)
-    }));
+    setSelectedFiles(prev => prev.filter(att => att._id !== attachmentId));
   };
 
   const filteredDebts = debts.filter(debt => 
@@ -451,9 +452,9 @@ function Debts() {
                 />
               </Button>
 
-              {formData.attachments.length > 0 && (
+              {selectedFiles.length > 0 && (
                 <List dense>
-                  {formData.attachments.map(attachment => (
+                  {selectedFiles.map(attachment => (
                     <ListItem key={attachment._id}>
                       <ListItemText 
                         primary={attachment.title}

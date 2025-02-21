@@ -11,262 +11,113 @@ const PDFDocument = require('pdfkit');
 router.get('/', auth, async (req, res) => {
   try {
     const { range = 'month' } = req.query;
-    const userId = new mongoose.Types.ObjectId(req.user.id);
 
     // Tarih aralığını belirle
-    const endDate = new Date();
     const startDate = new Date();
-    
-    switch (range) {
-      case 'year':
-        startDate.setFullYear(endDate.getFullYear() - 1);
-        startDate.setHours(0, 0, 0, 0);
-        break;
-      case 'quarter':
-        startDate.setMonth(endDate.getMonth() - 3);
-        startDate.setHours(0, 0, 0, 0);
-        break;
-      default: // month
-        startDate.setMonth(endDate.getMonth() - 1);
-        startDate.setHours(0, 0, 0, 0);
-    }
-    endDate.setHours(23, 59, 59, 999);
+    startDate.setHours(0, 0, 0, 0);
 
-    // Tüm işlemleri al
-    const transactions = await Transaction.find({
-      userId,
-      date: { $gte: startDate, $lte: endDate }
-    }).sort({ date: 1 });
-
-    // Özet hesapla
-    const summary = transactions.reduce((acc, curr) => {
-      if (curr.type === 'income') {
-        acc.totalIncome += curr.amount;
-      } else if (curr.type === 'expense') {
-        acc.totalExpense += curr.amount;
-      }
-      return acc;
-    }, { totalIncome: 0, totalExpense: 0 });
-
-    summary.netBalance = summary.totalIncome - summary.totalExpense;
-
-    // Önceki dönem karşılaştırması
-    const previousStartDate = new Date(startDate);
-    const previousEndDate = new Date(startDate);
-    
-    switch (range) {
-      case 'year':
-        previousStartDate.setFullYear(previousStartDate.getFullYear() - 1);
-        previousEndDate.setFullYear(previousEndDate.getFullYear() - 1);
-        break;
-      case 'quarter':
-        previousStartDate.setMonth(previousStartDate.getMonth() - 3);
-        previousEndDate.setMonth(previousEndDate.getMonth() - 3);
-        break;
-      default:
-        previousStartDate.setMonth(previousStartDate.getMonth() - 1);
-        previousEndDate.setMonth(previousEndDate.getMonth() - 1);
+    if (range === 'month') {
+      startDate.setDate(1); // Ayın başı
+    } else if (range === 'year') {
+      startDate.setMonth(0, 1); // Yılın başı
     }
 
-    const previousPeriodTransactions = await Transaction.find({
-      userId,
-      date: { $gte: previousStartDate, $lte: previousEndDate }
-    });
-
-    const previousSummary = previousPeriodTransactions.reduce((acc, curr) => {
-      if (curr.type === 'income') {
-        acc.totalIncome += curr.amount;
-      } else if (curr.type === 'expense') {
-        acc.totalExpense += curr.amount;
-      }
-      return acc;
-    }, { totalIncome: 0, totalExpense: 0 });
-
-    // Yüzde değişimini hesapla
-    summary.percentageChange = {
-      income: previousSummary.totalIncome ? 
-        ((summary.totalIncome - previousSummary.totalIncome) / previousSummary.totalIncome * 100).toFixed(1) : 0,
-      expense: previousSummary.totalExpense ? 
-        ((summary.totalExpense - previousSummary.totalExpense) / previousSummary.totalExpense * 100).toFixed(1) : 0
-    };
-
-    // Aylık verileri hazırla
-    const monthlyData = [];
-
-    // Seçilen aralığa göre ayları belirle
-    let currentDate = new Date(startDate);
-    const endDateCopy = new Date(endDate);
-
-    // Sadece tam ayları al
-    switch (range) {
-      case 'year':
-        // Son 12 ay
-        for (let i = 11; i >= 0; i--) {
-          const date = new Date();
-          date.setMonth(date.getMonth() - i);
-          const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
-          const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
-
-          const monthTransactions = transactions.filter(t => {
-            const transDate = new Date(t.date);
-            return transDate >= monthStart && transDate <= monthEnd;
-          });
-
-          monthlyData.push({
-            month: date.toLocaleString('tr-TR', { month: 'short' }),
-            income: monthTransactions
-              .filter(t => t.type === 'income')
-              .reduce((sum, t) => sum + t.amount, 0),
-            expense: monthTransactions
-              .filter(t => t.type === 'expense')
-              .reduce((sum, t) => sum + t.amount, 0)
-          });
+    // Toplam gelir ve giderleri hesapla
+    const [incomeResult, expenseResult] = await Promise.all([
+      Transaction.aggregate([
+        {
+          $match: {
+            userId: new mongoose.Types.ObjectId(req.user.id),
+            type: 'income',
+            date: { $gte: startDate },
+            isVaultTransaction: { $ne: true }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: '$amount' }
+          }
         }
-        break;
-
-      case 'quarter':
-        // Son 3 ay
-        for (let i = 2; i >= 0; i--) {
-          const date = new Date();
-          date.setMonth(date.getMonth() - i);
-          const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
-          const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
-
-          const monthTransactions = transactions.filter(t => {
-            const transDate = new Date(t.date);
-            return transDate >= monthStart && transDate <= monthEnd;
-          });
-
-          monthlyData.push({
-            month: date.toLocaleString('tr-TR', { month: 'short' }),
-            income: monthTransactions
-              .filter(t => t.type === 'income')
-              .reduce((sum, t) => sum + t.amount, 0),
-            expense: monthTransactions
-              .filter(t => t.type === 'expense')
-              .reduce((sum, t) => sum + t.amount, 0)
-          });
+      ]),
+      Transaction.aggregate([
+        {
+          $match: {
+            userId: new mongoose.Types.ObjectId(req.user.id),
+            type: 'expense',
+            date: { $gte: startDate },
+            isVaultTransaction: { $ne: true }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: '$amount' }
+          }
         }
-        break;
-
-      default: // month - Bu ay
-        const thisMonth = new Date();
-        const monthStart = new Date(thisMonth.getFullYear(), thisMonth.getMonth(), 1);
-        const monthEnd = new Date(thisMonth.getFullYear(), thisMonth.getMonth() + 1, 0, 23, 59, 59, 999);
-
-        const monthTransactions = transactions.filter(t => {
-          const transDate = new Date(t.date);
-          return transDate >= monthStart && transDate <= monthEnd;
-        });
-
-        monthlyData.push({
-          month: thisMonth.toLocaleString('tr-TR', { month: 'short' }),
-          income: monthTransactions
-            .filter(t => t.type === 'income')
-            .reduce((sum, t) => sum + t.amount, 0),
-          expense: monthTransactions
-            .filter(t => t.type === 'expense')
-            .reduce((sum, t) => sum + t.amount, 0)
-        });
-    }
-
-    // Kategori dağılımını hesapla
-    const categoryData = await Transaction.aggregate([
-      {
-        $match: {
-          userId,
-          date: { $gte: startDate, $lte: endDate },
-          type: 'expense' // Sadece giderleri al
-        }
-      },
-      {
-        $group: {
-          _id: '$category',
-          amount: { $sum: '$amount' }
-        }
-      },
-      {
-        $match: {
-          amount: { $gt: 0 } // Sıfırdan büyük olanları filtrele
-        }
-      },
-      {
-        $sort: { 
-          amount: -1 // Tutara göre azalan sıralama
-        }
-      },
-      {
-        $project: {
-          category: '$_id',
-          amount: 1,
-          _id: 0
-        }
-      }
+      ])
     ]);
 
-    // Ekstra filtreleme ve kontrol
-    const filteredCategoryData = categoryData
-      .filter(item => item.amount > 0) // Son bir kontrol
-      .map(item => ({
-        ...item,
-        amount: Math.abs(item.amount) // Tutarların pozitif olduğundan emin ol
-      }));
+    // Kategori bazlı gelir ve giderleri hesapla
+    const [incomeByCategory, expenseByCategory] = await Promise.all([
+      Transaction.aggregate([
+        {
+          $match: {
+            userId: new mongoose.Types.ObjectId(req.user.id),
+            type: 'income',
+            date: { $gte: startDate },
+            isVaultTransaction: { $ne: true }
+          }
+        },
+        {
+          $group: {
+            _id: '$category',
+            total: { $sum: '$amount' }
+          }
+        },
+        { $sort: { total: -1 } }
+      ]),
+      Transaction.aggregate([
+        {
+          $match: {
+            userId: new mongoose.Types.ObjectId(req.user.id),
+            type: 'expense',
+            date: { $gte: startDate },
+            isVaultTransaction: { $ne: true }
+          }
+        },
+        {
+          $group: {
+            _id: '$category',
+            total: { $sum: '$amount' }
+          }
+        },
+        { $sort: { total: -1 } }
+      ])
+    ]);
 
-    // Günlük bakiye değişimi
-    const dailyBalances = [];
-    const previousBalanceTransactions = await Transaction.find({
-      userId,
-      date: { $lt: startDate }
-    }).sort({ date: 1 });
-
-    let runningBalance = previousBalanceTransactions.reduce((balance, t) => {
-      return balance + (t.type === 'income' ? t.amount : -t.amount);
-    }, 0);
-
-    // Her gün için veri oluştur
-    let currentDay = new Date(startDate);
-    while (currentDay <= endDate) {
-      const dayTransactions = transactions.filter(t => {
-        const transDate = new Date(t.date);
-        return transDate.toDateString() === currentDay.toDateString();
-      });
-
-      // O günün işlemlerini ekle
-      dayTransactions.forEach(t => {
-        runningBalance += t.type === 'income' ? t.amount : -t.amount;
-      });
-
-      // Her gün için veri ekle (işlem olmasa bile)
-      dailyBalances.push({
-        date: currentDay.toLocaleDateString('tr-TR'),
-        balance: runningBalance
-      });
-
-      currentDay.setDate(currentDay.getDate() + 1);
-    }
-
-    // En yüksek giderler ve gelirler
-    const topExpenses = transactions
-      .filter(t => t.type === 'expense')
-      .sort((a, b) => b.amount - a.amount)
-      .slice(0, 5);
-
-    const topIncomes = transactions
-      .filter(t => t.type === 'income')
-      .sort((a, b) => b.amount - a.amount)
-      .slice(0, 5);
+    const totalIncome = incomeResult[0]?.total || 0;
+    const totalExpense = expenseResult[0]?.total || 0;
+    const netBalance = totalIncome - totalExpense;
 
     res.json({
-      summary,
-      monthlyData,
-      categoryData: filteredCategoryData,
-      dailyBalances,
-      topExpenses,
-      topIncomes
+      summary: {
+        totalIncome,
+        totalExpense,
+        netBalance
+      },
+      incomeByCategory: incomeByCategory.map(item => ({
+        category: item._id,
+        amount: item.total
+      })),
+      expenseByCategory: expenseByCategory.map(item => ({
+        category: item._id,
+        amount: item.total
+      }))
     });
 
   } catch (error) {
-    console.error('Reports fetch error:', error);
+    console.error('Reports data fetch error:', error);
     res.status(500).json({ message: 'Rapor verileri alınırken bir hata oluştu' });
   }
 });
@@ -274,17 +125,28 @@ router.get('/', auth, async (req, res) => {
 // PDF raporu oluştur
 router.post('/generate-pdf', auth, async (req, res) => {
   try {
-    const { startDate, endDate, types = ['income', 'expense', 'vault-in', 'vault-out'] } = req.body;
+    const { startDate, endDate, types } = req.body;
 
-    // İşlemleri getir
-    const transactions = await Transaction.find({
+    // Kasa işlemleri seçili değilse, kasa kategorisindeki işlemleri de filtrele
+    const query = {
       userId: req.user.id,
       date: {
         $gte: new Date(startDate),
         $lte: new Date(endDate)
       },
       type: { $in: types }
-    }).sort({ date: 1 });
+    };
+
+    // Eğer kasa işlemleri seçili değilse
+    if (!types.includes('vault-in') && !types.includes('vault-out')) {
+      query.$and = [
+        { category: { $ne: 'Kasa' } },
+        { isVaultTransaction: { $ne: true } }
+      ];
+    }
+
+    // İşlemleri getir
+    const transactions = await Transaction.find(query).sort({ date: -1 });
 
     // Özet hesapla
     const summary = transactions.reduce((acc, curr) => {
@@ -297,28 +159,118 @@ router.post('/generate-pdf', auth, async (req, res) => {
     }, { totalIncome: 0, totalExpense: 0 });
 
     // PDF oluştur
-    const fileName = await pdfService.generateReport(
-      { transactions, summary },
-      { startDate, endDate, types }
-    );
-
-    // temp klasörünün varlığını kontrol et
-    const tempDir = path.join(__dirname, '../temp');
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true });
-    }
-
-    res.json({
-      message: 'PDF raporu oluşturuldu',
-      fileName,
-      downloadUrl: `http://localhost:5000/api/reports/download/${fileName}`
+    const doc = new PDFDocument({
+      size: 'A4',
+      margin: 50,
+      font: path.join(__dirname, '../fonts/Roboto-Regular.ttf')
     });
+
+    const fileName = `rapor_${new Date().toISOString().split('T')[0]}.pdf`;
+    const filePath = path.join(__dirname, '../temp', fileName);
+
+    doc.pipe(fs.createWriteStream(filePath));
+
+    // Başlık
+    doc.font(path.join(__dirname, '../fonts/Roboto-Bold.ttf'))
+      .fontSize(24)
+      .text('Finansal Rapor', { align: 'center' })
+      .moveDown();
+
+    // Tarih aralığı
+    doc.font(path.join(__dirname, '../fonts/Roboto-Regular.ttf'))
+      .fontSize(12)
+      .text(`Rapor Dönemi: ${new Date(startDate).toLocaleDateString('tr-TR')} - ${new Date(endDate).toLocaleDateString('tr-TR')}`, { align: 'left' })
+      .moveDown();
+
+    // Özet bilgiler
+    doc.font(path.join(__dirname, '../fonts/Roboto-Medium.ttf'))
+      .fontSize(16)
+      .text('Özet Bilgiler')
+      .moveDown();
+
+    doc.font(path.join(__dirname, '../fonts/Roboto-Regular.ttf'))
+      .fontSize(12)
+      .text(`Toplam Gelir: ₺${summary.totalIncome.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`)
+      .text(`Toplam Gider: ₺${summary.totalExpense.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`)
+      .text(`Net Bakiye: ₺${(summary.totalIncome - summary.totalExpense).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`)
+      .moveDown(2);
+
+    // İşlem listesi
+    doc.font(path.join(__dirname, '../fonts/Roboto-Medium.ttf'))
+      .fontSize(16)
+      .text('İşlem Listesi')
+      .moveDown();
+
+    // Tablo başlıkları
+    const tableTop = doc.y;
+    const colWidths = {
+      date: 80,
+      type: 70,
+      category: 100,
+      description: 170,
+      amount: 80
+    };
+
+    let currentY = tableTop;
+
+    // Başlık satırı
+    doc.font(path.join(__dirname, '../fonts/Roboto-Medium.ttf'))
+      .fontSize(10);
+
+    doc.text('Tarih', 50, currentY)
+      .text('Tür', 50 + colWidths.date, currentY)
+      .text('Kategori', 50 + colWidths.date + colWidths.type, currentY)
+      .text('Açıklama', 50 + colWidths.date + colWidths.type + colWidths.category, currentY)
+      .text('Tutar', 50 + colWidths.date + colWidths.type + colWidths.category + colWidths.description, currentY);
+
+    currentY += 20;
+
+    // Tablo çizgisi
+    doc.moveTo(50, currentY).lineTo(550, currentY).stroke();
+    currentY += 10;
+
+    // İşlem satırları
+    doc.font(path.join(__dirname, '../fonts/Roboto-Regular.ttf'))
+      .fontSize(10);
+
+    transactions.forEach(transaction => {
+      if (currentY > 700) {
+        doc.addPage();
+        currentY = 50;
+      }
+
+      const type = transaction.type === 'income' ? 'Gelir' :
+                   transaction.type === 'expense' ? 'Gider' :
+                   transaction.type === 'vault-in' ? 'Kasa Giriş' : 'Kasa Çıkış';
+
+      doc.text(new Date(transaction.date).toLocaleDateString('tr-TR'), 50, currentY)
+         .text(type, 50 + colWidths.date, currentY)
+         .text(transaction.category, 50 + colWidths.date + colWidths.type, currentY)
+         .text(transaction.description || '-', 50 + colWidths.date + colWidths.type + colWidths.category, currentY)
+         .text(`₺${transaction.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`, 
+               50 + colWidths.date + colWidths.type + colWidths.category + colWidths.description, currentY);
+
+      currentY += 20;
+    });
+
+    doc.end();
+
+    doc.on('end', () => {
+      const stream = fs.createReadStream(filePath);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      stream.pipe(res);
+
+      stream.on('end', () => {
+        fs.unlink(filePath, err => {
+          if (err) console.error('Temp file deletion error:', err);
+        });
+      });
+    });
+
   } catch (error) {
     console.error('PDF generation error:', error);
-    res.status(500).json({ 
-      message: 'Rapor oluşturulurken bir hata oluştu',
-      error: error.message 
-    });
+    res.status(500).json({ message: 'PDF oluşturma hatası' });
   }
 });
 
@@ -326,32 +278,23 @@ router.post('/generate-pdf', auth, async (req, res) => {
 router.post('/download', auth, async (req, res) => {
   try {
     const { range = 'month' } = req.body;
-    const userId = new mongoose.Types.ObjectId(req.user.id);
-
-    // Tarih aralığını belirle
-    const endDate = new Date();
-    const startDate = new Date();
     
-    switch (range) {
-      case 'year':
-        startDate.setFullYear(endDate.getFullYear() - 1);
-        startDate.setHours(0, 0, 0, 0);
-        break;
-      case 'quarter':
-        startDate.setMonth(endDate.getMonth() - 3);
-        startDate.setHours(0, 0, 0, 0);
-        break;
-      default:
-        startDate.setMonth(endDate.getMonth() - 1);
-        startDate.setHours(0, 0, 0, 0);
+    // Tarih aralığını belirle
+    const startDate = new Date();
+    startDate.setHours(0, 0, 0, 0);
+
+    if (range === 'month') {
+      startDate.setDate(1);
+    } else if (range === 'year') {
+      startDate.setMonth(0, 1);
     }
-    endDate.setHours(23, 59, 59, 999);
 
     // İşlemleri getir
     const transactions = await Transaction.find({
-      userId,
-      date: { $gte: startDate, $lte: endDate }
-    }).sort({ date: 1 });
+      userId: req.user.id,
+      date: { $gte: startDate },
+      isVaultTransaction: { $ne: true }
+    }).sort({ date: -1 });
 
     // Özet hesapla
     const summary = transactions.reduce((acc, curr) => {
@@ -363,47 +306,40 @@ router.post('/download', auth, async (req, res) => {
       return acc;
     }, { totalIncome: 0, totalExpense: 0 });
 
-    summary.netBalance = summary.totalIncome - summary.totalExpense;
-
     // PDF oluştur
     const doc = new PDFDocument();
-    const fileName = `report-${Date.now()}.pdf`;
+    const fileName = `rapor_${new Date().toISOString().split('T')[0]}.pdf`;
     const filePath = path.join(__dirname, '../temp', fileName);
 
-    // temp klasörünü kontrol et
-    if (!fs.existsSync(path.join(__dirname, '../temp'))) {
-      fs.mkdirSync(path.join(__dirname, '../temp'), { recursive: true });
-    }
-
-    // PDF'i oluştur
+    // PDF'i dosyaya yaz
     doc.pipe(fs.createWriteStream(filePath));
 
-    // PDF içeriğini hazırla
+    // PDF içeriğini oluştur
     doc
       .fontSize(20)
       .text('Finansal Rapor', { align: 'center' })
       .moveDown();
 
+    // Rapor dönemi
     doc
       .fontSize(12)
-      .text(`Rapor Tarihi: ${new Date().toLocaleDateString()}`)
-      .text(`Dönem: ${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}`)
+      .text(`Rapor Dönemi: ${range === 'month' ? 'Bu Ay' : 'Bu Yıl'}`, { align: 'left' })
       .moveDown();
 
     // Özet bilgiler
     doc
-      .fontSize(16)
-      .text('Özet', { underline: true })
+      .fontSize(14)
+      .text('Özet Bilgiler', { underline: true })
       .moveDown()
       .fontSize(12)
-      .text(`Toplam Gelir: ₺${summary.totalIncome.toLocaleString()}`)
-      .text(`Toplam Gider: ₺${summary.totalExpense.toLocaleString()}`)
-      .text(`Net Bakiye: ₺${summary.netBalance.toLocaleString()}`)
+      .text(`Toplam Gelir: ₺${summary.totalIncome.toFixed(2)}`)
+      .text(`Toplam Gider: ₺${summary.totalExpense.toFixed(2)}`)
+      .text(`Net Bakiye: ₺${(summary.totalIncome - summary.totalExpense).toFixed(2)}`)
       .moveDown();
 
-    // İşlem listesi
+    // İşlem listesi başlığı
     doc
-      .fontSize(16)
+      .fontSize(14)
       .text('İşlem Listesi', { underline: true })
       .moveDown();
 
@@ -412,10 +348,10 @@ router.post('/download', auth, async (req, res) => {
     doc
       .fontSize(10)
       .text('Tarih', 50, tableTop)
-      .text('Açıklama', 150, tableTop)
-      .text('Kategori', 300, tableTop)
-      .text('Tür', 400, tableTop)
-      .text('Tutar', 480, tableTop)
+      .text('Tür', 150, tableTop)
+      .text('Kategori', 250, tableTop)
+      .text('Açıklama', 350, tableTop)
+      .text('Tutar', 450, tableTop)
       .moveDown();
 
     // İşlemleri listele
@@ -428,11 +364,11 @@ router.post('/download', auth, async (req, res) => {
 
       doc
         .fontSize(10)
-        .text(new Date(transaction.date).toLocaleDateString(), 50, yPosition)
-        .text(transaction.description || '', 150, yPosition)
-        .text(transaction.category, 300, yPosition)
-        .text(transaction.type === 'income' ? 'Gelir' : 'Gider', 400, yPosition)
-        .text(`₺${transaction.amount.toLocaleString()}`, 480, yPosition);
+        .text(new Date(transaction.date).toLocaleDateString('tr-TR'), 50, yPosition)
+        .text(transaction.type === 'income' ? 'Gelir' : 'Gider', 150, yPosition)
+        .text(transaction.category, 250, yPosition)
+        .text(transaction.description || '-', 350, yPosition)
+        .text(`₺${transaction.amount.toFixed(2)}`, 450, yPosition);
 
       yPosition += 20;
     });
@@ -440,21 +376,87 @@ router.post('/download', auth, async (req, res) => {
     // PDF'i sonlandır
     doc.end();
 
-    // PDF'i gönder
-    res.download(filePath, 'rapor.pdf', (err) => {
-      if (err) {
-        console.error('PDF download error:', err);
-        return res.status(500).json({ message: 'PDF indirme hatası' });
-      }
-      // Dosyayı sil
-      fs.unlink(filePath, (err) => {
-        if (err) console.error('Temp file deletion error:', err);
+    // PDF hazır olduğunda gönder
+    doc.on('end', () => {
+      const stream = fs.createReadStream(filePath);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      stream.pipe(res);
+
+      // Dosyayı gönderildikten sonra sil
+      stream.on('end', () => {
+        fs.unlink(filePath, (err) => {
+          if (err) console.error('Temp file deletion error:', err);
+        });
       });
     });
 
   } catch (error) {
     console.error('PDF generation error:', error);
     res.status(500).json({ message: 'PDF oluşturma hatası' });
+  }
+});
+
+// Aylık/Yıllık gelir-gider verilerini getir
+router.get('/chart-data', auth, async (req, res) => {
+  try {
+    const { range = 'month' } = req.query;
+    const startDate = new Date();
+    startDate.setHours(0, 0, 0, 0);
+
+    let groupBy;
+    if (range === 'month') {
+      startDate.setDate(1); // Ayın başı
+      groupBy = { $dayOfMonth: '$date' };
+    } else {
+      startDate.setMonth(0, 1); // Yılın başı
+      groupBy = { $month: '$date' };
+    }
+
+    const [incomeData, expenseData] = await Promise.all([
+      Transaction.aggregate([
+        {
+          $match: {
+            userId: new mongoose.Types.ObjectId(req.user.id),
+            type: 'income',
+            date: { $gte: startDate },
+            isVaultTransaction: { $ne: true }
+          }
+        },
+        {
+          $group: {
+            _id: groupBy,
+            total: { $sum: '$amount' }
+          }
+        },
+        { $sort: { _id: 1 } }
+      ]),
+      Transaction.aggregate([
+        {
+          $match: {
+            userId: new mongoose.Types.ObjectId(req.user.id),
+            type: 'expense',
+            date: { $gte: startDate },
+            isVaultTransaction: { $ne: true }
+          }
+        },
+        {
+          $group: {
+            _id: groupBy,
+            total: { $sum: '$amount' }
+          }
+        },
+        { $sort: { _id: 1 } }
+      ])
+    ]);
+
+    res.json({
+      incomeData,
+      expenseData
+    });
+  } catch (error) {
+    console.error('Chart data fetch error:', error);
+    res.status(500).json({ message: 'Grafik verileri alınırken bir hata oluştu' });
   }
 });
 

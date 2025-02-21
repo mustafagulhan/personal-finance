@@ -6,26 +6,31 @@ const monthlyIncomeSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
-  month: {
-    type: Date,
+  title: {
+    type: String,
     required: true
   },
-  estimatedIncome: {
+  estimatedAmount: {
     type: Number,
-    required: true
+    default: 0
   },
-  actualIncome: {
+  actualAmount: {
     type: Number,
     default: 0
   },
   description: {
-    type: String,
-    required: true
+    type: String
+  },
+  month: {
+    type: Date,
+    required: true,
+    default: () => {
+      const now = new Date();
+      return new Date(now.getFullYear(), now.getMonth(), 1);
+    }
   }
 }, {
   timestamps: true
 });
 
-const MonthlyIncome = mongoose.model('MonthlyIncome', monthlyIncomeSchema);
-
-module.exports = MonthlyIncome; 
+module.exports = mongoose.model('MonthlyIncome', monthlyIncomeSchema); 

@@ -12,38 +12,47 @@ import {
   TableRow,
   Paper,
   IconButton,
+  Alert,
+  CircularProgress,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   TextField,
-  Alert
+  Stack
 } from '@mui/material';
 import {
   Add as AddIcon,
-  Edit as EditIcon
+  Edit as EditIcon,
+  Delete as DeleteIcon
 } from '@mui/icons-material';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import PageTitle from '../components/PageTitle';
 
-function MonthlyIncome() {
+const MonthlyIncome = () => {
   const { token } = useAuth();
-  const [incomes, setIncomes] = useState([]);
-  const [openForm, setOpenForm] = useState(false);
+  const [data, setData] = useState({
+    incomes: [],
+    summary: {
+      estimatedTotal: 0,
+      actualTotal: 0
+    }
+  });
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [editingId, setEditingId] = useState(null);
-  const [selectedMonth, setSelectedMonth] = useState(
-    new Date().toISOString().slice(0, 7)
-  );
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingIncome, setEditingIncome] = useState(null);
+  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().split('T')[0].slice(0, 7));
   const [formData, setFormData] = useState({
+    title: '',
+    estimatedAmount: '',
+    actualAmount: '',
     description: '',
-    estimatedIncome: '',
-    actualIncome: '',
-    month: new Date().toISOString().slice(0, 7)
+    month: selectedMonth
   });
 
-  const fetchIncomes = async () => {
+  const fetchMonthlyIncomes = async () => {
     try {
       const response = await axios.get(
         `http://localhost:5000/api/monthly-income?month=${selectedMonth}`,
@@ -51,27 +60,71 @@ function MonthlyIncome() {
           headers: { Authorization: `Bearer ${token}` }
         }
       );
-      setIncomes(response.data);
+      setData(response.data);
       setError(null);
     } catch (error) {
       console.error('Monthly incomes fetch error:', error);
-      setError('Aylık gelirler alınamadı');
+      setError('Aylık gelirler yüklenirken bir hata oluştu');
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
     if (token) {
-      fetchIncomes();
+      fetchMonthlyIncomes();
     }
   }, [token, selectedMonth]);
+
+  const handleOpenDialog = (income = null) => {
+    if (income) {
+      setEditingIncome(income);
+      setFormData({
+        title: income.title || '',
+        estimatedAmount: income.estimatedAmount?.toString() || '',
+        actualAmount: income.actualAmount?.toString() || '',
+        description: income.description || '',
+        month: new Date(income.month).toISOString().split('T')[0].slice(0, 7)
+      });
+    } else {
+      setEditingIncome(null);
+      setFormData({
+        title: '',
+        estimatedAmount: '',
+        actualAmount: '',
+        description: '',
+        month: selectedMonth
+      });
+    }
+    setDialogOpen(true);
+  };
+
+  const handleCloseDialog = () => {
+    setDialogOpen(false);
+    setEditingIncome(null);
+    setFormData({
+      title: '',
+      estimatedAmount: '',
+      actualAmount: '',
+      description: '',
+      month: selectedMonth
+    });
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      if (editingId) {
+      const submitData = {
+        ...formData,
+        estimatedAmount: formData.estimatedAmount ? parseFloat(formData.estimatedAmount) : 0,
+        actualAmount: formData.actualAmount ? parseFloat(formData.actualAmount) : 0,
+        month: new Date(formData.month)
+      };
+
+      if (editingIncome) {
         await axios.put(
-          `http://localhost:5000/api/monthly-income/${editingId}`,
-          formData,
+          `http://localhost:5000/api/monthly-income/${editingIncome._id}`,
+          submitData,
           {
             headers: { Authorization: `Bearer ${token}` }
           }
@@ -79,71 +132,64 @@ function MonthlyIncome() {
       } else {
         await axios.post(
           'http://localhost:5000/api/monthly-income',
-          formData,
+          submitData,
           {
             headers: { Authorization: `Bearer ${token}` }
           }
         );
       }
-      
-      setOpenForm(false);
-      setFormData({
-        description: '',
-        estimatedIncome: '',
-        actualIncome: '',
-        month: selectedMonth
-      });
-      setEditingId(null);
-      fetchIncomes();
+
+      handleCloseDialog();
+      fetchMonthlyIncomes();
+      setError(null);
     } catch (error) {
-      console.error('Save monthly income error:', error);
-      setError('Aylık gelir kaydedilemedi');
+      console.error('Monthly income save error:', error);
+      setError(error.response?.data?.message || 'Aylık gelir kaydedilirken bir hata oluştu');
     }
   };
 
-  const handleEdit = (income) => {
-    setFormData({
-      description: income.description,
-      estimatedIncome: income.estimatedIncome,
-      actualIncome: income.actualIncome,
-      month: new Date(income.month).toISOString().slice(0, 7)
-    });
-    setEditingId(income._id);
-    setOpenForm(true);
+  const handleDelete = async (id) => {
+    try {
+      await axios.delete(`http://localhost:5000/api/monthly-income/${id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      fetchMonthlyIncomes();
+      setError(null);
+    } catch (error) {
+      console.error('Monthly income delete error:', error);
+      setError('Aylık gelir silinirken bir hata oluştu');
+    }
   };
 
-  const calculateTotals = () => {
-    return incomes.reduce((acc, income) => ({
-      estimated: acc.estimated + income.estimatedIncome,
-      actual: acc.actual + income.actualIncome
-    }), { estimated: 0, actual: 0 });
-  };
+  if (loading) {
+    return (
+      <Container>
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+          <CircularProgress />
+        </Box>
+      </Container>
+    );
+  }
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Box sx={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'flex-start',
-        mb: 4
-      }}>
-        <PageTitle title="Aylık Gelir Takibi" />
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => {
-            setEditingId(null);
-            setFormData({
-              description: '',
-              estimatedIncome: '',
-              actualIncome: '',
-              month: selectedMonth
-            });
-            setOpenForm(true);
-          }}
-        >
-          Gelir Ekle
-        </Button>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+        <PageTitle title="Aylık Gelirler" />
+        <Stack direction="row" spacing={2}>
+          <TextField
+            type="month"
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            sx={{ width: 200 }}
+          />
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => handleOpenDialog()}
+          >
+            Yeni Gelir Ekle
+          </Button>
+        </Stack>
       </Box>
 
       {error && (
@@ -152,107 +198,105 @@ function MonthlyIncome() {
         </Alert>
       )}
 
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="h6" gutterBottom>
+          Toplam Tahmini Gelir: ₺{data.summary.estimatedTotal.toFixed(2)}
+        </Typography>
+        <Typography variant="h6" gutterBottom>
+          Toplam Gerçekleşen Gelir: ₺{data.summary.actualTotal.toFixed(2)}
+        </Typography>
+      </Box>
+
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
             <TableRow>
+              <TableCell>Başlık</TableCell>
               <TableCell>Açıklama</TableCell>
-              <TableCell align="right">Tahmini Gelir</TableCell>
-              <TableCell align="right">Gerçekleşen Gelir</TableCell>
-              <TableCell align="right">Fark</TableCell>
+              <TableCell align="right">Tahmini Tutar</TableCell>
+              <TableCell align="right">Gerçekleşen Tutar</TableCell>
               <TableCell align="right">İşlemler</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {incomes.map((income) => (
+            {data.incomes.map((income) => (
               <TableRow key={income._id}>
-                <TableCell>{income.description}</TableCell>
-                <TableCell align="right">₺{income.estimatedIncome.toFixed(2)}</TableCell>
-                <TableCell align="right">₺{income.actualIncome.toFixed(2)}</TableCell>
-                <TableCell 
-                  align="right"
-                  sx={{ 
-                    color: income.actualIncome >= income.estimatedIncome ? 'success.main' : 'error.main'
-                  }}
-                >
-                  ₺{(income.actualIncome - income.estimatedIncome).toFixed(2)}
-                </TableCell>
+                <TableCell>{income.title}</TableCell>
+                <TableCell>{income.description || '-'}</TableCell>
+                <TableCell align="right">₺{income.estimatedAmount.toFixed(2)}</TableCell>
+                <TableCell align="right">₺{income.actualAmount.toFixed(2)}</TableCell>
                 <TableCell align="right">
-                  <IconButton onClick={() => handleEdit(income)}>
+                  <IconButton onClick={() => handleOpenDialog(income)}>
                     <EditIcon />
+                  </IconButton>
+                  <IconButton onClick={() => handleDelete(income._id)}>
+                    <DeleteIcon />
                   </IconButton>
                 </TableCell>
               </TableRow>
             ))}
-            {/* Toplam Satırı */}
-            {incomes.length > 0 && (
-              <TableRow>
-                <TableCell><strong>TOPLAM</strong></TableCell>
-                <TableCell align="right">
-                  <strong>₺{calculateTotals().estimated.toFixed(2)}</strong>
-                </TableCell>
-                <TableCell align="right">
-                  <strong>₺{calculateTotals().actual.toFixed(2)}</strong>
-                </TableCell>
-                <TableCell 
-                  align="right"
-                  sx={{ 
-                    color: calculateTotals().actual >= calculateTotals().estimated 
-                      ? 'success.main' 
-                      : 'error.main'
-                  }}
-                >
-                  <strong>
-                    ₺{(calculateTotals().actual - calculateTotals().estimated).toFixed(2)}
-                  </strong>
-                </TableCell>
-                <TableCell />
-              </TableRow>
-            )}
           </TableBody>
         </Table>
       </TableContainer>
 
-      <Dialog open={openForm} onClose={() => setOpenForm(false)}>
+      <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
         <form onSubmit={handleSubmit}>
           <DialogTitle>
-            {editingId ? 'Gelir Düzenle' : 'Yeni Gelir'}
+            {editingIncome ? 'Aylık Geliri Düzenle' : 'Yeni Aylık Gelir'}
           </DialogTitle>
-          <DialogContent>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+          <DialogContent dividers>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+              <TextField
+                label="Başlık"
+                value={formData.title}
+                onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
+                required
+              />
+              <TextField
+                label="Tahmini Tutar"
+                type="number"
+                value={formData.estimatedAmount}
+                onChange={(e) => setFormData(prev => ({ ...prev, estimatedAmount: e.target.value }))}
+                InputProps={{
+                  startAdornment: <span>₺</span>
+                }}
+              />
+              <TextField
+                label="Gerçekleşen Tutar"
+                type="number"
+                value={formData.actualAmount}
+                onChange={(e) => setFormData(prev => ({ ...prev, actualAmount: e.target.value }))}
+                InputProps={{
+                  startAdornment: <span>₺</span>
+                }}
+              />
+              <TextField
+                type="month"
+                label="Ay"
+                value={formData.month}
+                onChange={(e) => setFormData(prev => ({ ...prev, month: e.target.value }))}
+                required
+                InputLabelProps={{ shrink: true }}
+              />
               <TextField
                 label="Açıklama"
                 value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                required
-              />
-              <TextField
-                label="Tahmini Gelir"
-                type="number"
-                value={formData.estimatedIncome}
-                onChange={(e) => setFormData({ ...formData, estimatedIncome: e.target.value })}
-                required
-                inputProps={{ min: 0, step: "0.01" }}
-              />
-              <TextField
-                label="Gerçekleşen Gelir"
-                type="number"
-                value={formData.actualIncome}
-                onChange={(e) => setFormData({ ...formData, actualIncome: e.target.value })}
-                inputProps={{ min: 0, step: "0.01" }}
+                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                multiline
+                rows={3}
               />
             </Box>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setOpenForm(false)}>İptal</Button>
+            <Button onClick={handleCloseDialog}>İptal</Button>
             <Button type="submit" variant="contained">
-              {editingId ? 'Güncelle' : 'Ekle'}
+              {editingIncome ? 'Güncelle' : 'Ekle'}
             </Button>
           </DialogActions>
         </form>
       </Dialog>
     </Container>
   );
-}
+};
 
 export default MonthlyIncome; 

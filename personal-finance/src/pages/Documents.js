@@ -13,23 +13,33 @@ import {
   Paper,
   IconButton,
   Alert,
-  CircularProgress
+  CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent
 } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
   Visibility as ViewIcon,
   Download as DownloadIcon,
-  Delete as DeleteIcon
+  Delete as DeleteIcon,
+  Close as CloseIcon
 } from '@mui/icons-material';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import PageTitle from '../components/PageTitle';
+import UploadDialog from '../components/UploadDialog';
 
 function Documents() {
   const { token } = useAuth();
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [viewingDocument, setViewingDocument] = useState(null);
+  const [imageDialogOpen, setImageDialogOpen] = useState(false);
+  const [viewingImage, setViewingImage] = useState(null);
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
 
   const fetchDocuments = async () => {
     try {
@@ -52,101 +62,96 @@ function Documents() {
     }
   }, [token]);
 
-  const handleFileUpload = async (event) => {
-    const files = Array.from(event.target.files);
-    
-    for (const file of files) {
-      if (file.size > 5 * 1024 * 1024) {
-        setError('Dosya boyutu 5MB\'dan küçük olmalıdır');
+  const handleFileSelect = (event) => {
+    try {
+      if (!event.target || !event.target.files) {
+        console.error('No files selected');
         return;
       }
 
-      const formData = new FormData();
-      formData.append('file', file);
-
-      try {
-        // Aynı isimli dosya var mı kontrol et
-        const existingDoc = documents.find(doc => doc.title === file.name);
-        if (existingDoc) {
-          // Kullanıcıya sor
-          if (!window.confirm(`"${file.name}" dosyası zaten mevcut. Üzerine yazmak istiyor musunuz?`)) {
-            continue; // Kullanıcı hayır derse sonraki dosyaya geç
-          }
-          // Eski dosyayı listeden kaldır
-          setDocuments(prev => prev.filter(doc => doc.title !== file.name));
+      const files = Array.from(event.target.files);
+      
+      const validFiles = files.filter(file => {
+        if (file.size > 5 * 1024 * 1024) {
+          setError('Bazı dosyalar 5MB\'dan büyük olduğu için eklenmedi');
+          return false;
         }
+        
+        const allowedTypes = ['image/jpeg', 'image/png', 'application/pdf'];
+        if (!allowedTypes.includes(file.type)) {
+          setError('Sadece JPEG, PNG ve PDF dosyaları yüklenebilir');
+          return false;
+        }
+        
+        return true;
+      });
 
-        const response = await axios.post(
-          'http://localhost:5000/api/documents/upload',
-          formData,
-          {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'multipart/form-data'
-            }
-          }
-        );
-
-        setDocuments(prev => [...prev, response.data]);
-        setError(null);
-      } catch (error) {
-        console.error('File upload error:', error);
-        setError(error.response?.data?.message || 'Dosya yüklenirken bir hata oluştu');
+      if (validFiles.length > 0) {
+        setSelectedFiles(validFiles);
+        setUploadDialogOpen(true);
       }
+
+      event.target.value = '';
+    } catch (error) {
+      console.error('File selection error:', error);
+      setError('Dosya seçiminde bir hata oluştu');
     }
-    
-    // Input'u temizle
-    event.target.value = '';
   };
 
-  const handleView = async (document) => {
+  const handleRemoveFile = (index) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+    if (selectedFiles.length <= 1) {
+      setUploadDialogOpen(false);
+    }
+  };
+
+  const handleUpload = async (description) => {
     try {
-      const response = await axios.get(
-        `http://localhost:5000/api/documents/${document._id}/view`,
+      const formData = new FormData();
+      selectedFiles.forEach(file => {
+        formData.append('files', file);
+      });
+      
+      // Açıklamayı ekle
+      formData.append('description', description);
+
+      const response = await axios.post(
+        'http://localhost:5000/api/documents/upload',
+        formData,
         {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: {
+            'Content-Type': 'multipart/form-data',
+            Authorization: `Bearer ${token}`
+          }
         }
       );
 
-      if (document.fileType === 'application/pdf') {
-        const pdfWindow = window.open('', '_blank');
-        pdfWindow.document.write(`
-          <html>
-            <head>
-              <title>${response.data.title}</title>
-            </head>
-            <body style="margin:0;padding:0;">
-              <embed width="100%" height="100%" src="${response.data.data}" type="application/pdf">
-            </body>
-          </html>
-        `);
-      } else if (document.fileType.startsWith('image/')) {
-        const imgWindow = window.open('', '_blank');
-        imgWindow.document.write(`
-          <html>
-            <head>
-              <title>${response.data.title}</title>
-              <style>
-                body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #1a1a1a; }
-                img { max-width: 100%; max-height: 100vh; object-fit: contain; }
-              </style>
-            </head>
-            <body>
-              <img src="${response.data.data}" alt="${response.data.title}">
-            </body>
-          </html>
-        `);
-      }
+      setDocuments(prev => [...response.data, ...prev]);
+      setError(null);
+      setSelectedFiles([]);
+      setUploadDialogOpen(false);
     } catch (error) {
-      console.error('View error:', error);
-      setError('Dosya görüntülenirken bir hata oluştu');
+      console.error('File upload error:', error);
+      setError('Dosyalar yüklenirken bir hata oluştu');
     }
   };
 
-  const handleDownload = async (document) => {
+  const handleView = (doc) => {
+    if (doc.fileType.startsWith('image/')) {
+      setViewingImage({
+        url: `http://localhost:5000/uploads/${doc.path}`,
+        title: doc.title
+      });
+      setImageDialogOpen(true);
+    } else {
+      window.open(`http://localhost:5000/uploads/${doc.path}`, '_blank');
+    }
+  };
+
+  const handleDownload = async (doc) => {
     try {
       const response = await axios.get(
-        `http://localhost:5000/api/documents/${document._id}/download`,
+        `http://localhost:5000/api/documents/download/${doc._id}`,
         {
           headers: { Authorization: `Bearer ${token}` },
           responseType: 'blob'
@@ -156,13 +161,12 @@ function Documents() {
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', document.title);
+      link.setAttribute('download', doc.title);
       document.body.appendChild(link);
       link.click();
       link.remove();
     } catch (error) {
-      console.error('Download error:', error);
-      setError('Dosya indirilirken bir hata oluştu');
+      setError('Dosya indirme hatası');
     }
   };
 
@@ -196,13 +200,23 @@ function Documents() {
         mb: 4
       }}>
         <PageTitle title="Belgeler" />
-        <Button
-          variant="contained"
-          startIcon={<UploadIcon />}
-          onClick={handleFileUpload}
-        >
-          Belge Ekle
-        </Button>
+        <input
+          type="file"
+          multiple
+          accept=".pdf,.jpg,.jpeg,.png"
+          onChange={handleFileSelect}
+          style={{ display: 'none' }}
+          id="file-upload"
+        />
+        <label htmlFor="file-upload">
+          <Button
+            component="span"
+            variant="contained"
+            startIcon={<UploadIcon />}
+          >
+            Belge Yükle
+          </Button>
+        </label>
       </Box>
 
       {error && (
@@ -247,6 +261,42 @@ function Documents() {
           </TableBody>
         </Table>
       </TableContainer>
+
+      <Dialog
+        open={imageDialogOpen}
+        onClose={() => setImageDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Typography>{viewingImage?.title}</Typography>
+            <IconButton onClick={() => setImageDialogOpen(false)}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <img
+            src={viewingImage?.url}
+            alt={viewingImage?.title}
+            style={{
+              width: '100%',
+              height: 'auto',
+              maxHeight: '80vh',
+              objectFit: 'contain'
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <UploadDialog
+        open={uploadDialogOpen}
+        onClose={() => setUploadDialogOpen(false)}
+        files={selectedFiles}
+        onUpload={handleUpload}
+        onRemoveFile={handleRemoveFile}
+      />
     </Container>
   );
 }

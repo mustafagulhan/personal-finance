@@ -68,6 +68,45 @@ router.post('/', auth, uploadMulter, async (req, res) => {
   }
 });
 
+// Çoklu dosya yükleme endpoint'i
+router.post('/upload', auth, upload.array('files'), async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ message: 'Yüklenecek dosya bulunamadı' });
+    }
+
+    const description = req.body.description || '';
+    const savedDocuments = [];
+
+    for (const file of req.files) {
+      try {
+        const document = new Document({
+          userId: req.user.id,
+          title: file.originalname,
+          path: file.filename,
+          fileType: file.mimetype,
+          fileSize: file.size,
+          description: description
+        });
+
+        const savedDoc = await document.save();
+        savedDocuments.push(savedDoc);
+      } catch (err) {
+        console.error('Document save error:', err);
+        fs.unlink(file.path, (unlinkErr) => {
+          if (unlinkErr) console.error('File deletion error:', unlinkErr);
+        });
+      }
+    }
+
+    res.json(savedDocuments);
+
+  } catch (error) {
+    console.error('Upload error:', error);
+    res.status(500).json({ message: 'Dosya yükleme hatası' });
+  }
+});
+
 // Tüm belgeleri getir
 router.get('/', auth, async (req, res) => {
   try {
@@ -178,6 +217,45 @@ router.put('/:id/transaction/:transactionId', auth, async (req, res) => {
   } catch (error) {
     console.error('Belge güncellenemedi:', error);
     res.status(500).json({ message: 'Sunucu hatası' });
+  }
+});
+
+// Belge indirme
+router.get('/download/:id', auth, async (req, res) => {
+  try {
+    const document = await Document.findOne({
+      _id: req.params.id,
+      userId: req.user.id
+    });
+
+    if (!document) {
+      return res.status(404).json({ message: 'Belge bulunamadı' });
+    }
+
+    // Dosya yolunu düzgün şekilde oluştur
+    const filePath = path.join(__dirname, '..', 'uploads', document.path);
+
+    // Dosyanın var olduğunu kontrol et
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ message: 'Dosya sistemde bulunamadı' });
+    }
+
+    // Content-Type ve Content-Disposition header'larını ayarla
+    res.setHeader('Content-Type', document.fileType);
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(document.title)}"`);
+
+    // Dosyayı stream olarak gönder
+    const fileStream = fs.createReadStream(filePath);
+    fileStream.pipe(res);
+
+    // Hata durumunda
+    fileStream.on('error', (error) => {
+      console.error('File stream error:', error);
+      res.status(500).json({ message: 'Dosya okunurken bir hata oluştu' });
+    });
+  } catch (error) {
+    console.error('Document download error:', error);
+    res.status(500).json({ message: 'Belge indirilirken bir hata oluştu' });
   }
 });
 

@@ -11,13 +11,12 @@ const mongoose = require('mongoose');
 router.get('/summary', auth, async (req, res) => {
   try {
     const [regularTransactions, vaultTransactions] = await Promise.all([
-      // Normal işlemler (kasa hariç)
+      // Normal işlemler
       Transaction.aggregate([
         {
           $match: {
             userId: new mongoose.Types.ObjectId(req.user.id),
-            isVaultTransaction: { $ne: true },
-            category: { $ne: 'Kasa' }
+            isVaultTransaction: false
           }
         },
         {
@@ -65,20 +64,16 @@ router.get('/summary', auth, async (req, res) => {
     const regular = regularTransactions[0] || { totalIncome: 0, totalExpense: 0 };
     const vault = vaultTransactions[0] || { totalVaultIn: 0, totalVaultOut: 0 };
 
-    const netBalance = (regular.totalIncome - regular.totalExpense);
-    const vaultBalance = (vault.totalVaultIn - vault.totalVaultOut);
+    // Net bakiyeyi hesapla
+    const netBalance = regular.totalIncome - regular.totalExpense;
+    const vaultBalance = vault.totalVaultIn - vault.totalVaultOut;
 
     res.json({
       netBalance,
-      vaultBalance,
-      totalBalance: netBalance + vaultBalance,
+      vaultBalance, // Kasa bakiyesini ekledik
       details: {
         income: regular.totalIncome,
         expense: regular.totalExpense,
-        vault: {
-          in: vault.totalVaultIn,
-          out: vault.totalVaultOut
-        }
       }
     });
   } catch (error) {

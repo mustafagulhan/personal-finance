@@ -92,7 +92,7 @@ function Dashboard() {
       ]);
 
       // Debug için
-      console.log('Recent transactions:', transactionsResponse.data);
+      console.log('Summary response:', summaryResponse.data);
 
       setDashboardData({
         summary: {
@@ -107,7 +107,7 @@ function Dashboard() {
           },
           vaultBalance: summaryResponse.data.vaultBalance || 0
         },
-        recentTransactions: transactionsResponse.data || [], // Son işlemler
+        recentTransactions: transactionsResponse.data || [],
         recentNotes: notesResponse.data || []
       });
 
@@ -128,7 +128,7 @@ function Dashboard() {
 
   // Son işlemleri gösterme fonksiyonu
   const renderTransactionRow = (transaction) => {
-    const isIncome = transaction.type === 'income';
+    const isIncome = transaction.type === 'income' || transaction.type === 'vault-in';
     
     return (
       <TableRow key={transaction._id}>
@@ -137,7 +137,11 @@ function Dashboard() {
         <TableCell>{transaction.category}</TableCell>
         <TableCell>
           <Chip
-            label={isIncome ? "Gelir" : "Gider"}
+            label={
+              transaction.type === 'vault-in' ? "Kasa Giriş" :
+              transaction.type === 'vault-out' ? "Kasa Çıkış" :
+              isIncome ? "Gelir" : "Gider"
+            }
             size="small"
             sx={{
               backgroundColor: isIncome ? '#10B98115' : '#EF444415',

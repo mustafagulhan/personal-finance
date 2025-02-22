@@ -182,7 +182,7 @@ router.post('/transfer', auth, async (req, res) => {
       amount: parsedAmount,
       description: description || (type === 'vault-in' ? 'Kasaya para eklendi' : 'Kasadan para çekildi'),
       category: 'Kasa',
-      isVaultTransaction: false, // Ana bakiyeyi etkileyecek
+      isVaultTransaction: false, // Ana işlem olduğu için false olmalı
       date: new Date()
     });
 

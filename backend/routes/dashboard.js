@@ -27,12 +27,12 @@ router.get('/', auth, async (req, res) => {
       Transaction.find({
         userId: req.user.id,
         date: { $gte: currentMonthStart, $lte: currentMonthEnd },
-        isVaultTransaction: false
+        isVaultTransaction: false // Sadece ana işlemleri al
       }),
       Transaction.find({
         userId: req.user.id,
         date: { $gte: lastMonthStart, $lte: lastMonthEnd },
-        isVaultTransaction: false
+        isVaultTransaction: false // Sadece ana işlemleri al
       }),
       Vault.findOne({ userId: req.user.id })
     ]);
@@ -66,7 +66,7 @@ router.get('/', auth, async (req, res) => {
     // Son işlemleri al
     const recentTransactions = await Transaction.find({ 
       userId: req.user.id,
-      isVaultTransaction: false
+      isVaultTransaction: false // Sadece ana işlemleri al
     })
       .sort({ date: -1, createdAt: -1 })
       .limit(5);

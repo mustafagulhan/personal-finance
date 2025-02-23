@@ -8,7 +8,7 @@ Gelir ve giderlerinizi takip edebileceğiniz, raporlar oluşturabileceğiniz ve 
 - Detaylı raporlar ve grafikler
 - Belge yönetimi
 - Karanlık/Aydınlık tema
-- Responsive tasarım
+- Responsive tasarım.
 
 ## Teknolojiler
 
